@@ -8,6 +8,20 @@
 #include <drivers/clock_control.h>
 #include <drivers/clock_control/stm32_clock_control.h>
 #include "uart_stm32.h"
+// #include <kernel.h>
+// #include <arch/cpu.h>
+// #include <sys/__assert.h>
+// #include <soc.h>
+// #include <init.h>
+#include <drivers/uart.h>
+// #include <drivers/pinmux.h>
+// #include <pinmux/pinmux_stm32.h>
+#include <drivers/clock_control.h>
+
+// #include <linker/sections.h>
+#include <drivers/clock_control/stm32_clock_control.h>
+#include "uart_stm32.h"
+
 #include <stm32_ll_usart.h>
 #include <stm32_ll_lpuart.h>
 
@@ -68,6 +82,7 @@ void uart_stm32h7xx_receive_timeout_clear_flag(const struct device *dev)
 	USART_TypeDef *UartInstance = UART_STRUCT(dev);
 
 	LL_USART_ClearFlag_RTO(UartInstance);
+		LL_USART_IsEnabledRxTimeout(UartInstance);
 }
 
 void uart_stm32h7xx_receive_timeout_set(const struct device *dev, uint32_t _timeout )
