@@ -4,20 +4,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-// #include <kernel.h>
-// #include <arch/cpu.h>
-// #include <sys/__assert.h>
-// #include <soc.h>
-// #include <init.h>
 #include <drivers/uart.h>
-// #include <drivers/pinmux.h>
-// #include <pinmux/pinmux_stm32.h>
 #include <drivers/clock_control.h>
-
-// #include <linker/sections.h>
 #include <drivers/clock_control/stm32_clock_control.h>
 #include "uart_stm32.h"
-
 #include <stm32_ll_usart.h>
 #include <stm32_ll_lpuart.h>
 
@@ -28,6 +18,23 @@
 	((struct uart_stm32_data *const)(dev)->data)
 #define UART_STRUCT(dev)					\
 	((USART_TypeDef *)(DEV_CFG(dev))->uconf.base)
+
+// ************************************************************************************
+// *******                    Receive/disable
+// ************************************************************************************
+void uart_stm32h7xx_uart_enable(const struct device *dev)
+{
+	USART_TypeDef *UartInstance = UART_STRUCT(dev);
+
+	LL_USART_Enable(UartInstance);
+}
+
+void uart_stm32h7xx_uart_disable(const struct device *dev)
+{
+	USART_TypeDef *UartInstance = UART_STRUCT(dev);
+
+	LL_USART_Disable(UartInstance);
+}
 
 // ************************************************************************************
 // *******                    Receive timeout
@@ -52,6 +59,13 @@ int uart_stm32h7xx_receive_timeout_ready(const struct device *dev)
 
 	return LL_USART_IsActiveFlag_RTO(UartInstance) &&
 		LL_USART_IsEnabledRxTimeout(UartInstance);
+}
+
+void uart_stm32h7xx_receive_timeout_clear_flag(const struct device *dev)
+{
+	USART_TypeDef *UartInstance = UART_STRUCT(dev);
+
+	LL_USART_ClearFlag_RTO(UartInstance);
 }
 
 void uart_stm32h7xx_receive_timeout_set(const struct device *dev, uint32_t _timeout )
