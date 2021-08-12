@@ -23,10 +23,13 @@ extern "C" {
 #include <drivers/uart.h>
 #include <stm32h7xx_ll_usart.h>
 
+void uart_stm32h7xx_uart_enable(const struct device *dev);
+void uart_stm32h7xx_uart_disable(const struct device *dev);
 
 void uart_stm32h7xx_receive_timeout_enable(const struct device *dev);
 void uart_stm32h7xx_receive_timeout_disable(const struct device *dev);
 int uart_stm32h7xx_receive_timeout_ready(const struct device *dev);
+void uart_stm32h7xx_receive_timeout_clear_flag(const struct device *dev);
 void uart_stm32h7xx_receive_timeout_set(const struct device *dev, uint32_t _timeout);
 
 #ifndef CONFIG_UART_ASYNC_API
