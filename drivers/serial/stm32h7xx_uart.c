@@ -78,6 +78,13 @@ void uart_stm32h7xx_receive_timeout_clear_flag(const struct device *dev)
 	LL_USART_ClearFlag_RTO(UartInstance);
 }
 
+void uart_stm32h7xx_receive_timeout_clear_flag(const struct device *dev)
+{
+	USART_TypeDef *UartInstance = UART_STRUCT(dev);
+
+	LL_USART_ClearFlag_RTO(UartInstance);
+}
+
 void uart_stm32h7xx_receive_timeout_set(const struct device *dev, uint32_t _timeout )
 {
 	USART_TypeDef *UartInstance = UART_STRUCT(dev);
