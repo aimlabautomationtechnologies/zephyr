@@ -68,7 +68,7 @@ void uart_stm32h7xx_receive_timeout_clear_flag(const struct device *dev)
 	USART_TypeDef *UartInstance = UART_STRUCT(dev);
 
 	LL_USART_ClearFlag_RTO(UartInstance);
-		LL_USART_IsEnabledRxTimeout(UartInstance);
+	LL_USART_IsEnabledRxTimeout(UartInstance);
 }
 
 void uart_stm32h7xx_receive_timeout_clear_flag(const struct device *dev)
