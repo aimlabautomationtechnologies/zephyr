@@ -100,7 +100,8 @@ static inline int z_arm_dwt_init_cycle_counter(void)
 	DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
 
 	/* Assert that the cycle counter is indeed implemented. */
-	__ASSERT((DWT->CTRL & DWT_CTRL_NOCYCCNT_Msk) != 0,
+	/* note inverted logic: NOCYCCNT bit is zero if implemented */
+	__ASSERT((DWT->CTRL & DWT_CTRL_NOCYCCNT_Msk) == 0,
 		"DWT implements no cycle counter. "
 		"Cannot be used for cycle counting\n");
 
