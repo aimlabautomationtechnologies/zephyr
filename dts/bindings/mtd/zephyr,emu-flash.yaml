@@ -1,0 +1,12 @@
+
+description: Zephyr Emulated FLASH device
+
+compatible: "zephyr,emu-flash"
+
+include: base.yaml
+
+properties:
+    eeprom:
+      type: phandle
+      required: true
+      description: The underlying EEPROM device used to store data
