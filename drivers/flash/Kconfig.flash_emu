@@ -1,0 +1,15 @@
+config FLASH_EMULATOR
+	bool "Emulated FLASH driver"
+	# select EEPROM
+	help
+	  Enable emulated (on eeprom) FLASH support. This mimics an external
+	  FLASH on a eeprom device. 
+
+config FLASH_EMULATOR_INIT_PRIORITY
+	int "FLASH emulator init priority"
+	default 76
+	depends on FLASH_EMULATOR
+	help
+	  Sets the system initialisation priority for the flash emulator driver.
+	  This should be greater than the init priority of the underlying 
+	  eeprom driver.
