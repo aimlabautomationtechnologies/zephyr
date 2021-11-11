@@ -95,20 +95,40 @@ static int format_set(const struct log_backend *const backend, uint32_t log_type
 	return 0;
 }
 
+#if IS_ENABLED( CONFIG_SOC_SERIES_STM32H7X )
+	#define SWO_BASE (0x5C003000UL)
+	#define SWO_CODR *((unsigned int *)(SWO_BASE + 0x010UL))
+	#define SWO_SPPR *((unsigned int *)(SWO_BASE + 0x0F0UL))
+	#define SWO_LAR *((unsigned int *)(SWO_BASE + 0xFB0UL))
+#endif
+
 static void log_backend_swo_init(struct log_backend const *const backend)
 {
 	/* Enable DWT and ITM units */
 	CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
 	/* Enable access to ITM registers */
 	ITM->LAR  = 0xC5ACCE55;
+#if IS_ENABLED( CONFIG_SOC_SERIES_STM32H7X )
+	SWO_LAR  = 0xC5ACCE55;
+#endif
 	/* Disable stimulus ports ITM_STIM0-ITM_STIM31 */
 	ITM->TER  = 0x0;
 	/* Disable ITM */
 	ITM->TCR  = 0x0;
 	/* Select NRZ (UART) encoding protocol */
+#if IS_ENABLED( CONFIG_SOC_SERIES_STM32H7X )
+	SWO_SPPR = 2;
+#else
 	TPI->SPPR = 2;
+#endif
+
 	/* Set SWO baud rate prescaler value: SWO_clk = ref_clock/(ACPR + 1) */
+#if IS_ENABLED( CONFIG_SOC_SERIES_STM32H7X )
+	SWO_CODR = SWO_FREQ_DIV - 1;
+#else
 	TPI->ACPR = SWO_FREQ_DIV - 1;
+#endif
+
 	/* Enable unprivileged access to ITM stimulus ports */
 	ITM->TPR  = 0x0;
 	/* Configure Debug Watchpoint and Trace */
@@ -128,6 +148,7 @@ static void log_backend_swo_init(struct log_backend const *const backend)
 
 	pinctrl_apply_state(pincfg, PINCTRL_STATE_DEFAULT);
 #endif
+	ITM->TER  = (1 << ITM_PORT_LOGGER)|(1 << 1);
 }
 
 static void log_backend_swo_panic(struct log_backend const *const backend)
