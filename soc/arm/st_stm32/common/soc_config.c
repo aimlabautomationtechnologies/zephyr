@@ -26,10 +26,15 @@
 static int st_stm32_common_config(const struct device *dev)
 {
 #ifdef CONFIG_LOG_BACKEND_SWO
+#if IS_ENABLED( CONFIG_SOC_SERIES_STM32H7X )
+	/* Enable the Trace Port Clock */
+	DBGMCU->CR |= DBGMCU_CR_DBG_TRACECKEN;
+#else
 	/* TRACE pin assignment for asynchronous mode */
 	DBGMCU->CR &= ~DBGMCU_CR_TRACE_MODE_Msk;
 	/* Enable the SWO pin */
 	DBGMCU->CR |= DBGMCU_CR_TRACE_IOEN;
+#endif // CONFIG_SOC_SERIES_STM32H7X
 #endif
 
 #if defined(CONFIG_USE_SEGGER_RTT)
