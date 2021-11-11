@@ -89,15 +89,12 @@ static void log_backend_swo_process(const struct log_backend *const backend,
 	log_output_func(&log_output_swo, &msg->log, flags);
 }
 
-<<<<<<< HEAD
 static int format_set(const struct log_backend *const backend, uint32_t log_type)
 {
 	log_format_current = log_type;
 	return 0;
 }
 
-=======
->>>>>>> 3dcdded884ef6909cfae0bd324114444bb703eaf
 #if IS_ENABLED( CONFIG_SOC_SERIES_STM32H7X )
 	#define SWO_BASE (0x5C003000UL)
 	#define SWO_CODR *((unsigned int *)(SWO_BASE + 0x010UL))
