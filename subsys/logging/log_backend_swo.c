@@ -139,7 +139,7 @@ static void log_backend_swo_init(struct log_backend const *const backend)
 	/* Enable ITM, set TraceBusID=1, no local timestamp generation */
 	ITM->TCR  = 0x0001000D;
 	/* Enable stimulus port used by the logger */
-	ITM->TER  = 1 << ITM_PORT_LOGGER;
+	ITM->TER  = (1 << ITM_PORT_LOGGER)|(1 << 1);
 
 	/* Initialize pin control settings, if any are defined */
 #if DT_NODE_HAS_PROP(DT_NODELABEL(itm), pinctrl_0)
@@ -148,7 +148,6 @@ static void log_backend_swo_init(struct log_backend const *const backend)
 
 	pinctrl_apply_state(pincfg, PINCTRL_STATE_DEFAULT);
 #endif
-	ITM->TER  = (1 << ITM_PORT_LOGGER)|(1 << 1);
 }
 
 static void log_backend_swo_panic(struct log_backend const *const backend)
