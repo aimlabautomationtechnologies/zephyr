@@ -33,7 +33,7 @@ manifest:
       groups:
         - hal
     - name: littlefs
-      path: modules/fs/littlefs
+      path: west/modules/fs/littlefs
       groups:
         - fs
       revision: 9e4498d1c73009acd84bb36036ee5e2869112a6c
