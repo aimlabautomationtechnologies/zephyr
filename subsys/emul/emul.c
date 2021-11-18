@@ -13,6 +13,19 @@ LOG_MODULE_REGISTER(emul);
 #include <drivers/emul.h>
 #include <string.h>
 
+const struct emul *emul_find_by_label( const char *label )
+{
+	const struct emul *erp;
+
+	for (erp = __emul_list_start; erp < __emul_list_end; erp++) {
+		if (strcmp(erp->dev_label, label) == 0) {
+			return erp;
+		}
+	}
+
+	return NULL;
+}
+
 /**
  * Find a an emulator using its link information
  *
