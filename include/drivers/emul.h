@@ -69,6 +69,14 @@ extern const struct emul __emul_list_end[];
 #define EMUL_REG_NAME(node_id) (_CONCAT(__emulreg_, node_id))
 
 /**
+ * @brief find a emulator struct by dev label
+ * 
+ * @param label 
+ * @return const struct emul* 
+ */
+const struct emul *emul_find_by_label( const char *label );
+
+/**
  * Define a new emulator
  *
  * This adds a new struct emul to the linker list of emulations. This is
