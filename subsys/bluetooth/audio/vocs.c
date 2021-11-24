@@ -351,6 +351,8 @@ int bt_vocs_register(struct bt_vocs *vocs,
 }
 #endif /* CONFIG_BT_VOCS */
 
+#if defined(CONFIG_BT_VOCS) || defined(CONFIG_BT_VOCS_CLIENT)
+
 int bt_vocs_state_get(struct bt_vocs *inst)
 {
 	CHECKIF(!inst) {
@@ -485,3 +487,5 @@ int bt_vocs_description_set(struct bt_vocs *inst, const char *description)
 
 	return -ENOTSUP;
 }
+
+#endif /* CONFIG_BT_VOCS || CONFIG_BT_VOCS_CLIENT */

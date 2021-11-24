@@ -17,9 +17,13 @@
 		zephyr,flash = &flash0;
 		zephyr,code-partition = &slot0_ns_partition;
 	};
+
+	aliases {
+		usbd0 = &usbd;
+	};
 };
 
-zephyr_udc0: &usbd {
+&usbd {
 	compatible = "nordic,nrf-usbd";
 	status = "okay";
 };

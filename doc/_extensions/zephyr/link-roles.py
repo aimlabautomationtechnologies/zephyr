@@ -31,27 +31,15 @@ def get_github_rev():
 def setup(app):
     rev = get_github_rev()
 
-    # Try to get the zephyr repository's GitHub URL from the manifest.
-    #
-    # This allows building the docs in downstream Zephyr-based
-    # software with forks of the zephyr repository, and getting
-    # :zephyr_file: / :zephyr_raw: output that links to the fork,
-    # instead of mainline zephyr.
-    baseurl = None
+    # try to get url from West; this adds compatibility with repos
+    # located elsewhere
     if west_manifest is not None:
-        try:
-            # This search tries to look up a project named 'zephyr'.
-            # If zephyr is the manifest repository, this raises
-            # ValueError, since there isn't any such project.
-            baseurl = west_manifest.get_projects(['zephyr'],
-                                                 allow_paths=False)[0].url
-            # Spot check that we have a non-empty URL.
-            assert baseurl
-        except ValueError:
-            pass
+        baseurl = west_manifest.get_projects(['zephyr'])[0].url
+    else:
+        baseurl = None
 
-    # If the search failed, fall back on the mainline URL.
-    if baseurl is None:
+    # or fallback to default
+    if baseurl is None or baseurl == '':
         baseurl = 'https://github.com/zephyrproject-rtos/zephyr'
 
     app.add_role('zephyr_file', autolink('{}/blob/{}/%s'.format(baseurl, rev)))

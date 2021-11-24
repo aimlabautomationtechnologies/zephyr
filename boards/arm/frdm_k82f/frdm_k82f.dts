@@ -217,7 +217,7 @@
 	};
 };
 
-zephyr_udc0: &usbotg {
+&usbotg {
 	status = "okay";
 };
 

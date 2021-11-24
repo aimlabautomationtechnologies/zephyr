@@ -4,7 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#define BT_DBG_ENABLED IS_ENABLED(CONFIG_BT_DEBUG_HCI_DRIVER)
 #define LOG_MODULE_NAME bt_hci_driver_esp32
 #include "common/log.h"
 
@@ -255,7 +254,7 @@ static int bt_esp32_ble_init(void)
 	int ret;
 	esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
 
-#if defined(CONFIG_BT_BREDR) && defined(CONFIG_SOC_ESP32)
+#ifdef CONFIG_BT_BREDR
 	esp_bt_mode_t mode = ESP_BT_MODE_BTDM;
 #else
 	esp_bt_mode_t mode = ESP_BT_MODE_BLE;

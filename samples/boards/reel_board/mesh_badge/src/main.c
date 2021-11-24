@@ -142,7 +142,7 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 	}
 }
 
-BT_CONN_CB_DEFINE(conn_cb) = {
+static struct bt_conn_cb conn_cb = {
 	.connected = connected,
 	.disconnected = disconnected,
 };
@@ -164,6 +164,7 @@ static void bt_ready(int err)
 
 	printk("Mesh initialized\n");
 
+	bt_conn_cb_register(&conn_cb);
 	bt_conn_auth_cb_register(&auth_cb);
 
 	if (IS_ENABLED(CONFIG_SETTINGS)) {

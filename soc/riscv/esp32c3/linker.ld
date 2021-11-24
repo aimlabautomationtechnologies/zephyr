@@ -119,13 +119,13 @@ SECTIONS
     *libkernel.a:(.literal .text .literal.* .text.*)
     *libgcc.a:lib2funcs.*(.literal .text .literal.* .text.*)
     *libzephyr.a:log_noos.*(.literal .text .literal.* .text.*)
-    *libdrivers__timer.a:esp32c3_sys_timer.*(.literal .text .literal.* .text.*)
+    *libzephyr.a:esp32c3_sys_timer.*(.literal .text .literal.* .text.*)
     *libzephyr.a:log_core.*(.literal .text .literal.* .text.*)
     *libzephyr.a:cbprintf_complete.*(.literal .text .literal.* .text.*)
     *libzephyr.a:printk.*(.literal.printk .literal.vprintk .literal.char_out .text.printk .text.vprintk .text.char_out)
     *libzephyr.a:log_msg.*(.literal .text .literal.* .text.*)
     *libzephyr.a:log_list.*(.literal .text .literal.* .text.*)
-    *libdrivers__console.a:uart_console.*(.literal.console_out .text.console_out)
+    *libzephyr.a:uart_console.*(.literal.console_out .text.console_out)
     *libzephyr.a:log_output.*(.literal .text .literal.* .text.*)
     *libzephyr.a:log_backend_uart.*(.literal .text .literal.* .text.*)
     *liblib__libc__minimal.a:string.*(.literal .text .literal.* .text.*)
@@ -154,9 +154,7 @@ SECTIONS
     *(.data.*)
     *(.gnu.linkonce.d.*)
     *(.data1)
-#ifdef CONFIG_RISCV_GP
     __global_pointer$ = . + 0x800;
-#endif /* CONFIG_RISCV_GP */
     *(.sdata)
     *(.sdata.*)
     *(.gnu.linkonce.s.*)
@@ -169,7 +167,7 @@ SECTIONS
     *libzephyr.a:log_core.*(.rodata .rodata.*)
     *libzephyr.a:log_backend_uart.*(.rodata .rodata.*)
     *libzephyr.a:log_output.*(.rodata .rodata.*)
-    . = ALIGN(4);
+   . = ALIGN(4);
     __esp_log_const_start = .;
     KEEP(*(SORT(.log_const_*)));
     __esp_log_const_end = .;
@@ -182,7 +180,6 @@ SECTIONS
     KEEP(*(.jcr))
     *(.dram1 .dram1.*)
     _data_end = ABSOLUTE(.);
-    _end = .;
     . = ALIGN(4);
   } GROUP_LINK_IN(RAMABLE_REGION)
 
@@ -215,6 +212,7 @@ SECTIONS
     *(.noinit)
     *(".noinit.*")
     . = ALIGN (8);
+    _heap_start = ABSOLUTE(.);
   } GROUP_LINK_IN(RAMABLE_REGION)
 
   .flash.text : ALIGN(4)
@@ -238,10 +236,6 @@ SECTIONS
   .flash.rodata : ALIGN(0x10)
   {
     _rodata_start = ABSOLUTE(.);
-    __rodata_region_start = .;
-    __esp_shell_root_cmds_start = .;
-    KEEP(*(SORT(.shell_root_cmd_*)));
-    __esp_shell_root_cmds_end = .;
 
     *(.rodata_desc .rodata_desc.*)               /* Should be the first.  App version info.        DO NOT PUT ANYTHING BEFORE IT! */
     *(.rodata_custom_desc .rodata_custom_desc.*) /* Should be the second. Custom app version info. DO NOT PUT ANYTHING BEFORE IT! */
@@ -285,7 +279,10 @@ SECTIONS
     *(.xt_except_desc_end)
     *(.dynamic)
     *(.gnu.version_d)
-    __rodata_region_end = .;
+    /* Addresses of memory regions reserved via SOC_RESERVE_MEMORY_REGION() */
+    soc_reserved_memory_region_start = ABSOLUTE(.);
+    KEEP (*(.reserved_memory_address))
+    soc_reserved_memory_region_end = ABSOLUTE(.);
     _rodata_end = ABSOLUTE(.);
     /* Literals are also RO data. */
     _lit4_start = ABSOLUTE(.);
@@ -309,15 +306,6 @@ SECTIONS
   } GROUP_LINK_IN(ROMABLE_REGION)
 
 #include <linker/common-rom.ld>
-#include <linker/thread-local-storage.ld>
-
-/* Restore original value for symbols referenced by `common-rom.ld` */
-__log_const_start = __esp_log_const_start;
-__log_const_end = __esp_log_const_end;
-__log_backends_start = __esp_log_backends_start;
-__log_backends_end = __esp_log_backends_end;
-__shell_root_cmds_start = __esp_shell_root_cmds_start;
-__shell_root_cmds_end = __esp_shell_root_cmds_end;
 
 #ifdef CONFIG_GEN_ISR_TABLES
 #include <linker/intlist.ld>

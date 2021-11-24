@@ -354,7 +354,7 @@ void bt_l2cap_connected(struct bt_conn *conn)
 		return;
 	}
 
-	STRUCT_SECTION_FOREACH(bt_l2cap_fixed_chan, fchan) {
+	Z_STRUCT_SECTION_FOREACH(bt_l2cap_fixed_chan, fchan) {
 		struct bt_l2cap_le_chan *ch;
 
 		if (fchan->accept(conn, &chan) < 0) {
@@ -661,7 +661,7 @@ static void le_conn_param_update_req(struct bt_l2cap *l2cap, uint8_t ident,
 		return;
 	}
 
-	if (conn->role != BT_HCI_ROLE_CENTRAL) {
+	if (conn->role != BT_HCI_ROLE_MASTER) {
 		l2cap_send_reject(conn, ident, BT_L2CAP_REJ_NOT_UNDERSTOOD,
 				  NULL, 0);
 		return;
@@ -994,11 +994,6 @@ static uint16_t l2cap_chan_accept(struct bt_conn *conn,
 		return le_err_to_result(err);
 	}
 
-	if (!(*chan)->ops->recv) {
-		BT_ERR("Mandatory callback 'recv' missing");
-		return BT_L2CAP_LE_ERR_UNACCEPT_PARAMS;
-	}
-
 	(*chan)->required_sec_level = server->sec_level;
 
 	if (!l2cap_chan_add(conn, *chan, l2cap_chan_destroy)) {
@@ -1235,7 +1230,7 @@ static void le_ecred_reconf_req(struct bt_l2cap *l2cap, uint8_t ident,
 	uint16_t mtu, mps;
 	uint16_t scid, result = BT_L2CAP_RECONF_SUCCESS;
 	int chan_count = 0;
-	bool mps_reduced = false;
+	bool mps_reduced;
 
 	if (buf->len < sizeof(*req)) {
 		BT_ERR("Too small ecred reconf req packet size");
@@ -1295,13 +1290,9 @@ static void le_ecred_reconf_req(struct bt_l2cap *l2cap, uint8_t ident,
 		goto response;
 	}
 
-	for (int i = 0; i < chan_count; i++) {
-		BT_L2CAP_LE_CHAN(chans[i])->tx.mtu = mtu;
-		BT_L2CAP_LE_CHAN(chans[i])->tx.mps = mps;
-
-		if (chans[i]->ops->reconfigured) {
-			chans[i]->ops->reconfigured(chans[i]);
-		}
+	while (chan_count-- >= 0) {
+		BT_L2CAP_LE_CHAN(chans[chan_count])->tx.mtu = mtu;
+		BT_L2CAP_LE_CHAN(chans[chan_count])->tx.mps = mps;
 	}
 
 	BT_DBG("mtu %u mps %u", mtu, mps);
@@ -1314,36 +1305,6 @@ response:
 	rsp->result = sys_cpu_to_le16(result);
 
 	l2cap_send(conn, BT_L2CAP_CID_LE_SIG, buf);
-}
-
-static void le_ecred_reconf_rsp(struct bt_l2cap *l2cap, uint8_t ident,
-				struct net_buf *buf)
-{
-	struct bt_conn *conn = l2cap->chan.chan.conn;
-	struct bt_l2cap_ecred_reconf_rsp *rsp;
-	struct bt_l2cap_le_chan *ch;
-	uint16_t result;
-
-	if (buf->len < sizeof(*rsp)) {
-		BT_ERR("Too small ecred reconf rsp packet size");
-		return;
-	}
-
-	rsp = net_buf_pull_mem(buf, sizeof(*rsp));
-	result = sys_le16_to_cpu(rsp->result);
-
-	while ((ch = l2cap_lookup_ident(conn, ident))) {
-		if (result == BT_L2CAP_LE_SUCCESS) {
-			ch->rx.mtu = ch->pending_rx_mtu;
-		}
-
-		ch->pending_rx_mtu = 0;
-		ch->chan.ident = 0U;
-
-		if (ch->chan.ops->reconfigured) {
-			ch->chan.ops->reconfigured(&ch->chan);
-		}
-	}
 }
 #endif /* defined(CONFIG_BT_L2CAP_ECRED) */
 
@@ -2047,9 +2008,6 @@ static int l2cap_recv(struct bt_l2cap_chan *chan, struct net_buf *buf)
 	case BT_L2CAP_ECRED_RECONF_REQ:
 		le_ecred_reconf_req(l2cap, hdr->ident, buf);
 		break;
-	case BT_L2CAP_ECRED_RECONF_RSP:
-		le_ecred_reconf_rsp(l2cap, hdr->ident, buf);
-		break;
 #endif /* defined(CONFIG_BT_L2CAP_ECRED) */
 #else
 	case BT_L2CAP_CMD_REJECT:
@@ -2603,105 +2561,6 @@ fail:
 
 	return err;
 }
-
-static struct bt_l2cap_le_chan *l2cap_find_pending_reconf(struct bt_conn *conn)
-{
-	struct bt_l2cap_chan *chan;
-
-	SYS_SLIST_FOR_EACH_CONTAINER(&conn->channels, chan, node) {
-		if (BT_L2CAP_LE_CHAN(chan)->pending_rx_mtu) {
-			return BT_L2CAP_LE_CHAN(chan);
-		}
-	}
-
-	return NULL;
-}
-
-int bt_l2cap_ecred_chan_reconfigure(struct bt_l2cap_chan **chans, uint16_t mtu)
-{
-	struct bt_l2cap_ecred_reconf_req *req;
-	struct bt_conn *conn = NULL;
-	struct bt_l2cap_le_chan *ch;
-	struct net_buf *buf;
-	uint8_t ident;
-	int i;
-
-	BT_DBG("chans %p mtu 0x%04x", chans, mtu);
-
-	if (!chans) {
-		return -EINVAL;
-	}
-
-	for (i = 0; i < L2CAP_ECRED_CHAN_MAX; i++) {
-		if (!chans[i]) {
-			break;
-		}
-
-		/* validate that all channels are from same connection */
-		if (conn) {
-			if (conn != chans[i]->conn) {
-				return -EINVAL;
-			}
-		} else {
-			conn = chans[i]->conn;
-		}
-
-		/* validate MTU is not decreased */
-		if (mtu < BT_L2CAP_LE_CHAN(chans[i])->rx.mtu) {
-			return -EINVAL;
-		}
-	}
-
-	if (i == 0) {
-		return -EINVAL;
-	}
-
-	if (!conn) {
-		return -ENOTCONN;
-	}
-
-	if (conn->type != BT_CONN_TYPE_LE) {
-		return -EINVAL;
-	}
-
-	/* allow only 1 request at time */
-	if (l2cap_find_pending_reconf(conn)) {
-		return -EBUSY;
-	}
-
-	ident = get_ident();
-
-	buf = l2cap_create_le_sig_pdu(NULL, BT_L2CAP_ECRED_RECONF_REQ,
-				      ident,
-				      sizeof(*req) + (i * sizeof(uint16_t)));
-	if (!buf) {
-		return -ENOMEM;
-	}
-
-	req = net_buf_add(buf, sizeof(*req));
-	req->mtu = sys_cpu_to_le16(mtu);
-
-	/* MPS shall not be bigger than MTU + BT_L2CAP_SDU_HDR_SIZE
-	 * as the remaining bytes cannot be used.
-	 */
-	req->mps = sys_cpu_to_le16(MIN(mtu + BT_L2CAP_SDU_HDR_SIZE,
-				       BT_L2CAP_RX_MTU));
-
-	for (int j = 0; j < i; j++) {
-		ch = BT_L2CAP_LE_CHAN(chans[j]);
-
-		ch->chan.ident = ident;
-		ch->pending_rx_mtu = mtu;
-
-		net_buf_add_le16(buf, ch->rx.cid);
-	};
-
-	/* we use first channel for sending and timeouting */
-	l2cap_chan_send_req(chans[0], buf, L2CAP_CONN_TIMEOUT);
-
-	return 0;
-}
-
 #endif /* defined(CONFIG_BT_L2CAP_ECRED) */
 
 int bt_l2cap_chan_connect(struct bt_conn *conn, struct bt_l2cap_chan *chan,

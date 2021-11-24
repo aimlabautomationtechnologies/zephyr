@@ -171,7 +171,6 @@ static void test_requires(void)
 	zassert_true(check_handle(DEV_HDL(TEST_GPIOX), hdls, nhdls), NULL);
 }
 
-
 void test_main(void)
 {
 	size_t ndevs;
@@ -182,6 +181,6 @@ void test_main(void)
 	ztest_test_suite(devicetree_driver,
 			 ztest_unit_test(test_init_order),
 			 ztest_unit_test(test_requires)
-			 );
+		);
 	ztest_run_test_suite(devicetree_driver);
 }

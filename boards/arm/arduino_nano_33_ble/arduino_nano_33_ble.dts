@@ -110,7 +110,7 @@
 &gpio1 {
 	status = "okay";
 };
-zephyr_udc0: &usbd {
+&usbd {
 	compatible = "nordic,nrf-usbd";
 	status = "okay";
 };

@@ -447,16 +447,11 @@ __subsystem struct uart_driver_api {
 /**
  * @brief Set event handler function.
  *
- * Since it is mandatory to set callback to use other asynchronous functions,
- * it can be used to detect if the device supports asynchronous API. Remaining
- * API does not have that detection.
- *
  * @param dev       UART device structure.
  * @param callback  Event handler.
  * @param user_data Data to pass to event handler function.
  *
- * @retval -ENOSYS  If not supported by the device.
- * @retval -ENOTSUP If API not enabled.
+ * @retval -ENOTSUP If not supported.
  * @retval 0	    If successful, negative errno code otherwise.
  */
 static inline int uart_callback_set(const struct device *dev,
@@ -466,10 +461,6 @@ static inline int uart_callback_set(const struct device *dev,
 #ifdef CONFIG_UART_ASYNC_API
 	const struct uart_driver_api *api =
 			(const struct uart_driver_api *)dev->api;
-
-	if (api->callback_set == NULL) {
-		return -ENOSYS;
-	}
 
 	return api->callback_set(dev, callback, user_data);
 #else
@@ -646,7 +637,6 @@ static inline int z_impl_uart_rx_disable(const struct device *dev)
  *
  * @retval uart_rx_stop_reason If error during receiving occurred.
  * @retval 0		       Otherwise.
- * @retval -ENOSYS	       If this function is not supported.
  */
 __syscall int uart_err_check(const struct device *dev);
 
@@ -658,7 +648,6 @@ static inline int z_impl_uart_err_check(const struct device *dev)
 	if (api->err_check == NULL) {
 		return -ENOSYS;
 	}
-
 	return api->err_check(dev);
 }
 
@@ -672,7 +661,7 @@ static inline int z_impl_uart_err_check(const struct device *dev)
  * @retval 0 If a character arrived.
  * @retval -1 If no character was available to read (i.e., the UART
  *            input buffer was empty).
- * @retval -ENOSYS If the operation is not supported.
+ * @retval -ENOTSUP If the operation is not supported.
  * @retval -EBUSY If reception was enabled using uart_rx_enabled
  */
 __syscall int uart_poll_in(const struct device *dev, unsigned char *p_char);
@@ -682,10 +671,6 @@ static inline int z_impl_uart_poll_in(const struct device *dev,
 {
 	const struct uart_driver_api *api =
 		(const struct uart_driver_api *)dev->api;
-
-	if (api->poll_in == NULL) {
-		return -ENOSYS;
-	}
 
 	return api->poll_in(dev, p_char);
 }
@@ -752,7 +737,7 @@ static inline int z_impl_uart_configure(const struct device *dev,
  * @param dev UART device structure.
  * @param cfg UART configuration structure.
  *
- * @retval -ENOSYS If driver does not support getting current configuration.
+ * @retval -ENOTSUP If driver does not support getting current configuration.
  * @retval 0 If successful, negative errno code otherwise.
  */
 __syscall int uart_config_get(const struct device *dev,
@@ -769,6 +754,7 @@ static inline int z_impl_uart_config_get(const struct device *dev,
 	}
 
 	return api->config_get(dev, cfg);
+
 }
 
 /**
@@ -788,8 +774,6 @@ static inline int z_impl_uart_config_get(const struct device *dev,
  * @param size Number of bytes to send.
  *
  * @return Number of bytes sent.
- * @retval -ENOSYS  if this function is not supported
- * @retval -ENOTSUP if API is not enabled.
  */
 static inline int uart_fifo_fill(const struct device *dev,
 				 const uint8_t *tx_data,
@@ -799,14 +783,12 @@ static inline int uart_fifo_fill(const struct device *dev,
 	const struct uart_driver_api *api =
 		(const struct uart_driver_api *)dev->api;
 
-	if (api->fifo_fill == NULL) {
-		return -ENOSYS;
+	if (api->fifo_fill != NULL) {
+		return api->fifo_fill(dev, tx_data, size);
 	}
-
-	return api->fifo_fill(dev, tx_data, size);
 #endif
 
-	return -ENOTSUP;
+	return 0;
 }
 
 /**
@@ -830,8 +812,6 @@ static inline int uart_fifo_fill(const struct device *dev,
  * @param size Container size.
  *
  * @return Number of bytes read.
- * @retval -ENOSYS  if this function is not supported.
- * @retval -ENOTSUP if API is not enabled.
  */
 static inline int uart_fifo_read(const struct device *dev, uint8_t *rx_data,
 				 const int size)
@@ -840,14 +820,12 @@ static inline int uart_fifo_read(const struct device *dev, uint8_t *rx_data,
 	const struct uart_driver_api *api =
 		(const struct uart_driver_api *)dev->api;
 
-	if (api->fifo_read == NULL) {
-		return -ENOSYS;
+	if (api->fifo_read != NULL) {
+		return api->fifo_read(dev, rx_data, size);
 	}
-
-	return api->fifo_read(dev, rx_data, size);
 #endif
 
-	return -ENOTSUP;
+	return 0;
 }
 
 /**
@@ -904,9 +882,7 @@ static inline void z_impl_uart_irq_tx_disable(const struct device *dev)
  * @param dev UART device structure.
  *
  * @retval 1 If at least one char can be written to UART.
- * @retval 0 If device is not ready to write a new byte.
- * @retval -ENOSYS  if this function is not supported.
- * @retval -ENOTSUP if API is not enabled.
+ * @retval 0 Otherwise.
  */
 static inline int uart_irq_tx_ready(const struct device *dev)
 {
@@ -914,14 +890,12 @@ static inline int uart_irq_tx_ready(const struct device *dev)
 	const struct uart_driver_api *api =
 		(const struct uart_driver_api *)dev->api;
 
-	if (api->irq_tx_ready == NULL) {
-		return -ENOSYS;
+	if (api->irq_tx_ready != NULL) {
+		return api->irq_tx_ready(dev);
 	}
-
-	return api->irq_tx_ready(dev);
 #endif
 
-	return -ENOTSUP;
+	return 0;
 }
 
 /**
@@ -981,9 +955,8 @@ static inline void z_impl_uart_irq_rx_disable(const struct device *dev)
  * @param dev UART device structure.
  *
  * @retval 1 If nothing remains to be transmitted.
- * @retval 0 If transmission is not completed.
- * @retval -ENOSYS  if this function is not supported.
- * @retval -ENOTSUP if API is not enabled.
+ * @retval 0 Otherwise.
+ * @retval -ENOTSUP if this function is not supported
  */
 static inline int uart_irq_tx_complete(const struct device *dev)
 {
@@ -1017,9 +990,8 @@ static inline int uart_irq_tx_complete(const struct device *dev)
  * @param dev UART device structure.
  *
  * @retval 1 If a received char is ready.
- * @retval 0 If a received char is not ready.
- * @retval -ENOSYS  if this function is not supported.
- * @retval -ENOTSUP if API is not enabled.
+ * @retval 0 Otherwise.
+ * @retval -ENOTSUP if this function is not supported
  */
 static inline int uart_irq_rx_ready(const struct device *dev)
 {
@@ -1033,7 +1005,7 @@ static inline int uart_irq_rx_ready(const struct device *dev)
 	return api->irq_rx_ready(dev);
 #endif
 
-	return -ENOTSUP;
+	return 0;
 }
 /**
  * @brief Enable error interrupt.
@@ -1084,9 +1056,7 @@ static inline void z_impl_uart_irq_err_disable(const struct device *dev)
  * @param dev UART device structure.
  *
  * @retval 1 If an IRQ is pending.
- * @retval 0 If an IRQ is not pending.
- * @retval -ENOSYS  if this function is not supported.
- * @retval -ENOTSUP if API is not enabled.
+ * @retval 0 Otherwise.
  */
 __syscall int uart_irq_is_pending(const struct device *dev);
 
@@ -1101,7 +1071,7 @@ static inline int z_impl_uart_irq_is_pending(const struct device *dev)
 	}
 	return api->irq_is_pending(dev);
 #endif
-	return -ENOTSUP;
+	return 0;
 }
 
 /**
@@ -1125,9 +1095,7 @@ static inline int z_impl_uart_irq_is_pending(const struct device *dev)
  *
  * @param dev UART device structure.
  *
- * @retval -ENOSYS  if this function is not supported.
- * @retval -ENOTSUP if API is not enabled.
- * @retval 1 On success.
+ * @retval 1 Always.
  */
 __syscall int uart_irq_update(const struct device *dev);
 
@@ -1142,7 +1110,7 @@ static inline int z_impl_uart_irq_update(const struct device *dev)
 	}
 	return api->irq_update(dev);
 #endif
-	return -ENOTSUP;
+	return 0;
 }
 
 /**
@@ -1198,9 +1166,7 @@ static inline void uart_irq_callback_set(const struct device *dev,
  * @param val Value to set to the line control.
  *
  * @retval 0 If successful.
- * @retval -ENOSYS  if this function is not supported.
- * @retval -ENOTSUP if API is not enabled.
- * @retval negative value if failed.
+ * @retval failed Otherwise.
  */
 __syscall int uart_line_ctrl_set(const struct device *dev,
 				 uint32_t ctrl, uint32_t val);
@@ -1229,9 +1195,7 @@ static inline int z_impl_uart_line_ctrl_set(const struct device *dev,
  * @param val Pointer to variable where to store the line control value.
  *
  * @retval 0 If successful.
- * @retval -ENOSYS  if this function is not supported.
- * @retval -ENOTSUP if API is not enabled.
- * @retval negative value if failed.
+ * @retval failed Otherwise.
  */
 __syscall int uart_line_ctrl_get(const struct device *dev, uint32_t ctrl,
 				 uint32_t *val);
@@ -1263,9 +1227,7 @@ static inline int z_impl_uart_line_ctrl_get(const struct device *dev,
  * @param p Parameter to the command.
  *
  * @retval 0 If successful.
- * @retval -ENOSYS  if this function is not supported.
- * @retval -ENOTSUP if API is not enabled.
- * @retval negative value if failed.
+ * @retval failed Otherwise.
  */
 __syscall int uart_drv_cmd(const struct device *dev, uint32_t cmd, uint32_t p);
 

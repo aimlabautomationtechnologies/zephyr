@@ -510,7 +510,6 @@ static void test_d_length(void)
 	int max = 1876543210;
 	long long svll = 123LL << 48;
 	long long svll2 = -2LL;
-	unsigned long long uvll = 4000000000LLU;
 	int rc;
 
 	TEST_PRF(&rc, "%d/%d", min, max);
@@ -527,22 +526,22 @@ static void test_d_length(void)
 		PRF_CHECK("46/-22", rc);
 	}
 
-	TEST_PRF(&rc, "%ld/%ld/%lu/", (long)min, (long)max, 4000000000UL);
+	TEST_PRF(&rc, "%ld/%ld", (long)min, (long)max);
 	if (IS_ENABLED(CONFIG_CBPRINTF_FULL_INTEGRAL)
 	    || (sizeof(long) <= 4)
 	    || IS_ENABLED(CONFIG_CBPRINTF_NANO)) {
-		PRF_CHECK("-1234567890/1876543210/4000000000/", rc);
+		PRF_CHECK("-1234567890/1876543210", rc);
 	} else {
-		PRF_CHECK("%ld/%ld/%lu/", rc);
+		PRF_CHECK("%ld/%ld", rc);
 	}
 
-	TEST_PRF(&rc, "/%lld/%lld/%lld/%llu/", svll, -svll, svll2, uvll);
+	TEST_PRF(&rc, "/%lld/%lld/%lld/", svll, -svll, svll2);
 	if (IS_ENABLED(CONFIG_CBPRINTF_FULL_INTEGRAL)) {
-		PRF_CHECK("/34621422135410688/-34621422135410688/-2/4000000000/", rc);
+		PRF_CHECK("/34621422135410688/-34621422135410688/-2/", rc);
 	} else if (IS_ENABLED(CONFIG_CBPRINTF_COMPLETE)) {
-		PRF_CHECK("/%lld/%lld/%lld/%llu/", rc);
+		PRF_CHECK("/%lld/%lld/%lld/", rc);
 	} else if (IS_ENABLED(CONFIG_CBPRINTF_NANO)) {
-		PRF_CHECK("/ERR/ERR/-2/4000000000/", rc);
+		PRF_CHECK("/ERR/ERR/-2/", rc);
 	} else {
 		zassert_true(false, "Missed case!");
 	}

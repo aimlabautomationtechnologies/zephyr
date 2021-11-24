@@ -8,8 +8,6 @@
 
 #include <stddef.h>
 
-#include <zephyr.h>
-
 #include <sys/printk.h>
 #include <sys/util.h>
 
@@ -44,11 +42,6 @@ static void test_central_main(void)
 		goto exit;
 	}
 
-	/* Wait a little so that peripheral side completes the last
-	 * connection establishment.
-	 */
-	k_sleep(K_SECONDS(1));
-
 	PASS("Central tests passed\n");
 	bs_trace_silent_exit(0);
 
@@ -79,7 +72,7 @@ exit:
 
 static void test_multiple_init(void)
 {
-	bst_ticker_set_next_tick_absolute(30e6);
+	bst_ticker_set_next_tick_absolute(20e6);
 	bst_result = In_progress;
 }
 

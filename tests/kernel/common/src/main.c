@@ -49,7 +49,6 @@ extern void test_bitarray_set_clear(void);
 extern void test_bitarray_alloc_free(void);
 extern void test_bitarray_region_set_clear(void);
 extern void test_nop(void);
-extern void test_ffs(void);
 
 /**
  * @defgroup kernel_common_tests Common Tests
@@ -163,8 +162,7 @@ void test_main(void)
 			 ztest_user_unit_test(test_errno),
 			 ztest_unit_test(test_ms_time_duration),
 			 ztest_unit_test(test_bounds_check_mitigation),
-			 ztest_unit_test(test_nop),
-			 ztest_unit_test(test_ffs)
+			 ztest_unit_test(test_nop)
 			 );
 
 	ztest_run_test_suite(common);

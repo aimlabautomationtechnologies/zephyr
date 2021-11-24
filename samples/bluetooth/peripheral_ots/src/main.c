@@ -52,9 +52,9 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 	printk("Disconnected (reason %u)\n", reason);
 }
 
-BT_CONN_CB_DEFINE(conn_callbacks) = {
-	.connected = connected,
-	.disconnected = disconnected,
+static struct bt_conn_cb conn_callbacks = {
+	.connected        = connected,
+	.disconnected     = disconnected,
 };
 
 static int ots_obj_created(struct bt_ots *ots, struct bt_conn *conn,
@@ -105,9 +105,9 @@ static void ots_obj_selected(struct bt_ots *ots, struct bt_conn *conn,
 	printk("Object with %s ID has been selected\n", id_str);
 }
 
-static ssize_t ots_obj_read(struct bt_ots *ots, struct bt_conn *conn,
-			   uint64_t id, void **data, size_t len,
-			   off_t offset)
+static uint32_t ots_obj_read(struct bt_ots *ots, struct bt_conn *conn,
+			     uint64_t id, uint8_t **data, uint32_t len,
+			     uint32_t offset)
 {
 	char id_str[BT_OTS_OBJ_ID_STR_LEN];
 	uint32_t obj_index = (id % ARRAY_SIZE(objects));
@@ -131,26 +131,8 @@ static ssize_t ots_obj_read(struct bt_ots *ots, struct bt_conn *conn,
 	}
 
 	printk("Object with %s ID is being read\n"
-		"Offset = %lu, Length = %zu\n",
-		id_str, (long)offset, len);
-
-	return len;
-}
-
-static ssize_t ots_obj_write(struct bt_ots *ots, struct bt_conn *conn,
-			     uint64_t id, const void *data, size_t len,
-			     off_t offset, size_t rem)
-{
-	char id_str[BT_OTS_OBJ_ID_STR_LEN];
-	uint32_t obj_index = (id % ARRAY_SIZE(objects));
-
-	bt_ots_obj_id_to_str(id, id_str, sizeof(id_str));
-
-	printk("Object with %s ID is being written\n"
-		"Offset = %lu, Length = %zu, Remaining= %zu\n",
-		id_str, (long)offset, len, rem);
-
-	memcpy(&objects[obj_index].data[offset], data, len);
+		"Offset = %d, Length = %d\n",
+		id_str, offset, len);
 
 	return len;
 }
@@ -169,7 +151,6 @@ static struct bt_ots_cb ots_callbacks = {
 	.obj_deleted = ots_obj_deleted,
 	.obj_selected = ots_obj_selected,
 	.obj_read = ots_obj_read,
-	.obj_write = ots_obj_write,
 	.obj_name_written = ots_obj_name_written,
 };
 
@@ -181,8 +162,6 @@ static int ots_init(void)
 	struct bt_ots_obj_metadata obj_init;
 	const char * const first_object_name = "first_object.txt";
 	const char * const second_object_name = "second_object.gif";
-	uint32_t cur_size;
-	uint32_t alloc_size;
 
 	ots = bt_ots_free_instance_get();
 	if (!ots) {
@@ -193,8 +172,6 @@ static int ots_init(void)
 	/* Configure OTS initialization. */
 	memset(&ots_init, 0, sizeof(ots_init));
 	BT_OTS_OACP_SET_FEAT_READ(ots_init.features.oacp);
-	BT_OTS_OACP_SET_FEAT_WRITE(ots_init.features.oacp);
-	BT_OTS_OACP_SET_FEAT_PATCH(ots_init.features.oacp);
 	BT_OTS_OLCP_SET_FEAT_GO_TO(ots_init.features.olcp);
 	ots_init.cb = &ots_callbacks;
 
@@ -206,9 +183,7 @@ static int ots_init(void)
 	}
 
 	/* Prepare first object demo data and add it to the instance. */
-	cur_size = sizeof(objects[0].data) / 2;
-	alloc_size = sizeof(objects[0].data);
-	for (uint32_t i = 0; i < cur_size; i++) {
+	for (uint32_t i = 0; i < sizeof(objects[0].data); i++) {
 		objects[0].data[i] = i + 1;
 	}
 
@@ -220,11 +195,9 @@ static int ots_init(void)
 	obj_init.name = objects[0].name;
 	obj_init.type.uuid.type = BT_UUID_TYPE_16;
 	obj_init.type.uuid_16.val = BT_UUID_OTS_TYPE_UNSPECIFIED_VAL;
-	obj_init.size.cur = cur_size;
-	obj_init.size.alloc = alloc_size;
+	obj_init.size.cur = sizeof(objects[0].data);
+	obj_init.size.alloc = sizeof(objects[0].data);
 	BT_OTS_OBJ_SET_PROP_READ(obj_init.props);
-	BT_OTS_OBJ_SET_PROP_WRITE(obj_init.props);
-	BT_OTS_OBJ_SET_PROP_PATCH(obj_init.props);
 
 	err = bt_ots_obj_add(ots, &obj_init);
 	if (err) {
@@ -233,9 +206,7 @@ static int ots_init(void)
 	}
 
 	/* Prepare second object demo data and add it to the instance. */
-	cur_size = sizeof(objects[0].data);
-	alloc_size = sizeof(objects[0].data);
-	for (uint32_t i = 0; i < cur_size; i++) {
+	for (uint32_t i = 0; i < sizeof(objects[1].data); i++) {
 		objects[1].data[i] = i * 2;
 	}
 
@@ -247,8 +218,8 @@ static int ots_init(void)
 	obj_init.name = objects[1].name;
 	obj_init.type.uuid.type = BT_UUID_TYPE_16;
 	obj_init.type.uuid_16.val = BT_UUID_OTS_TYPE_UNSPECIFIED_VAL;
-	obj_init.size.cur = cur_size;
-	obj_init.size.alloc = alloc_size;
+	obj_init.size.cur = sizeof(objects[1].data);
+	obj_init.size.alloc = sizeof(objects[1].data);
 	BT_OTS_OBJ_SET_PROP_READ(obj_init.props);
 
 	err = bt_ots_obj_add(ots, &obj_init);
@@ -265,6 +236,8 @@ void main(void)
 	int err;
 
 	printk("Starting Bluetooth Peripheral OTS example\n");
+
+	bt_conn_cb_register(&conn_callbacks);
 
 	err = bt_enable(NULL);
 	if (err) {

@@ -19,7 +19,6 @@ over the following transports:
 
 * BLE (Bluetooth Low Energy)
 * Serial (UART)
-* UDP over IP
 
 The management subsystem is based on the Simple Management Protocol (SMP)
 provided by `MCUmgr`_, an open source project that provides a

@@ -40,6 +40,9 @@ struct uart_npcx_data {
 	uart_irq_callback_user_data_t user_cb;
 	void *user_data;
 #endif
+#ifdef CONFIG_PM_DEVICE
+	enum pm_device_state pm_state;
+#endif
 };
 
 /* Driver convenience defines */
@@ -438,12 +441,23 @@ static inline bool uart_npcx_device_is_transmitting(const struct device *dev)
 	return 0;
 }
 
-static inline int uart_npcx_pm_control(const struct device *dev,
-				       enum pm_device_action action)
+static inline int uart_npcx_get_power_state(const struct device *dev,
+					    enum pm_device_state *state)
 {
-	/* If next device power state is SUSPEND power state */
-	switch (action) {
-	case PM_DEVICE_ACTION_SUSPEND:
+	const struct uart_npcx_data *const data = DRV_DATA(dev);
+
+	*state = data->pm_state;
+	return 0;
+}
+
+static inline int uart_npcx_set_power_state(const struct device *dev,
+					    enum pm_device_state next_state)
+{
+	struct uart_npcx_data *const data = DRV_DATA(dev);
+
+	/* If next device power state is LOW or SUSPEND power state */
+	if (next_state == PM_DEVICE_STATE_LOW_POWER ||
+	    next_state == PM_DEVICE_STATE_SUSPEND) {
 		/*
 		 * If uart device is busy with transmitting, the driver will
 		 * stay in while loop and wait for the transaction is completed.
@@ -451,12 +465,30 @@ static inline int uart_npcx_pm_control(const struct device *dev,
 		while (uart_npcx_device_is_transmitting(dev)) {
 			continue;
 		}
-		break;
-	default:
-		return -ENOTSUP;
 	}
 
+	data->pm_state = next_state;
 	return 0;
+}
+
+/* Implements the device power management control functionality */
+static int uart_npcx_pm_control(const struct device *dev, uint32_t ctrl_command,
+				 enum pm_device_state *state)
+{
+	int ret = 0;
+
+	switch (ctrl_command) {
+	case PM_DEVICE_STATE_SET:
+		ret = uart_npcx_set_power_state(dev, *state);
+		break;
+	case PM_DEVICE_STATE_GET:
+		ret = uart_npcx_get_power_state(dev, state);
+		break;
+	default:
+		ret = -EINVAL;
+	}
+
+	return ret;
 }
 #endif /* CONFIG_PM_DEVICE */
 

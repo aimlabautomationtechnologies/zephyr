@@ -27,12 +27,10 @@ config MODEM_GSM_SIMCOM
 	help
 	  Use this if you have SIMCOM based modem like SIM800 etc.
 
-config MODEM_GSM_QUECTEL
-	bool "Quectel modem"
-	help
-	  Use this if you have Quectel based modem like EC2X etc.
-
 endchoice
+
+config MODEM_GSM_UART_NAME
+	string "UART device name the modem is connected to"
 
 config MODEM_GSM_RX_STACK_SIZE
 	int "Size of the stack allocated for receiving data from modem"

@@ -363,7 +363,7 @@ int shell_set_root_cmd(const char *cmd)
 		return -EINVAL;
 	}
 
-	STRUCT_SECTION_FOREACH(shell, sh) {
+	Z_STRUCT_SECTION_FOREACH(shell, sh) {
 		sh->ctx->selected_cmd = entry;
 	}
 

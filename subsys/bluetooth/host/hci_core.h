@@ -38,7 +38,7 @@ enum {
 	BT_DEV_EXPLICIT_SCAN,
 	BT_DEV_ACTIVE_SCAN,
 	BT_DEV_SCAN_FILTER_DUP,
-	BT_DEV_SCAN_FILTERED,
+	BT_DEV_SCAN_WL,
 	BT_DEV_SCAN_LIMITED,
 	BT_DEV_INITIATING,
 
@@ -92,9 +92,7 @@ enum {
 	/* Advertiser set is currently advertising in the controller. */
 	BT_ADV_ENABLED,
 	/* Advertiser should include name in advertising data */
-	BT_ADV_INCLUDE_NAME_AD,
-	/* Advertiser should include name in scan response data */
-	BT_ADV_INCLUDE_NAME_SD,
+	BT_ADV_INCLUDE_NAME,
 	/* Advertiser set is connectable */
 	BT_ADV_CONNECTABLE,
 	/* Advertiser set is scannable */
@@ -123,6 +121,10 @@ enum {
 	 * in the controller.
 	 */
 	BT_PER_ADV_CTE_ENABLED,
+	/* The device name has been forced to appear in the advertising data
+	 * instead of in the scan response data
+	 */
+	BT_ADV_FORCE_NAME_IN_AD,
 
 	BT_ADV_NUM_FLAGS,
 };
@@ -149,29 +151,24 @@ struct bt_le_ext_adv {
 	int8_t                    tx_power;
 #endif /* defined(CONFIG_BT_EXT_ADV) */
 
-	struct k_work_delayable	lim_adv_timeout_work;
+	struct k_work_delayable	timeout_work;
 };
 
 enum {
 	/** Periodic Advertising Sync has been created in the host. */
 	BT_PER_ADV_SYNC_CREATED,
 
-	/** Periodic Advertising Sync is established and can be terminated */
+	/** Periodic advertising is in sync and can be terminated */
 	BT_PER_ADV_SYNC_SYNCED,
 
-	/** Periodic Advertising Sync is attempting to create sync */
+	/** Periodic advertising is attempting sync sync */
 	BT_PER_ADV_SYNC_SYNCING,
 
-	/** Periodic Advertising Sync is attempting to create sync using
-	 *  Advertiser List
-	 */
-	BT_PER_ADV_SYNC_SYNCING_USE_LIST,
-
-	/** Periodic Advertising Sync established with reporting disabled */
+	/** Periodic advertising is attempting sync sync */
 	BT_PER_ADV_SYNC_RECV_DISABLED,
 
 	/** Constant Tone Extension for Periodic Advertising has been enabled
-	 * in the Controller.
+	 * in the controller.
 	 */
 	BT_PER_ADV_SYNC_CTE_ENABLED,
 
@@ -396,7 +393,7 @@ void bt_id_add(struct bt_keys *keys);
 void bt_id_del(struct bt_keys *keys);
 
 int bt_setup_random_id_addr(void);
-int bt_setup_public_id_addr(void);
+void bt_setup_public_id_addr(void);
 
 void bt_finalize_init(void);
 

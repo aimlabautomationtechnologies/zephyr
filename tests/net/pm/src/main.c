@@ -21,25 +21,23 @@ struct fake_dev_context {
 	struct net_if *iface;
 };
 
-static int fake_dev_pm_control(const struct device *dev,
-			       enum pm_device_action action)
+static int fake_dev_pm_control(const struct device *dev, uint32_t command,
+			       enum pm_device_state *state)
 {
 	struct fake_dev_context *ctx = dev->data;
-	int ret;
+	int ret = 0;
 
-	switch (action) {
-	case PM_DEVICE_ACTION_SUSPEND:
-		ret = net_if_suspend(ctx->iface);
-		if (ret == -EBUSY) {
-			goto out;
+	if (command == PM_DEVICE_STATE_SET) {
+		if (*state == PM_DEVICE_STATE_SUSPEND) {
+			ret = net_if_suspend(ctx->iface);
+			if (ret == -EBUSY) {
+				goto out;
+			}
+		} else if (*state == PM_DEVICE_STATE_ACTIVE) {
+			ret = net_if_resume(ctx->iface);
 		}
-		break;
-	case PM_DEVICE_ACTION_RESUME:
-		ret = net_if_resume(ctx->iface);
-		break;
-	default:
-		ret = -ENOTSUP;
-		break;
+	} else {
+		return -EINVAL;
 	}
 
 out:
@@ -148,13 +146,13 @@ void test_pm(void)
 	 */
 	k_yield();
 
-	ret = pm_device_state_set(dev, PM_DEVICE_STATE_SUSPENDED);
+	ret = pm_device_state_set(dev, PM_DEVICE_STATE_SUSPEND);
 	zassert_true(ret == 0, "Could not set state");
 
 	zassert_true(net_if_is_suspended(iface), "net iface is not suspended");
 
 	/* Let's try to suspend it again, it should fail relevantly */
-	ret = pm_device_state_set(dev, PM_DEVICE_STATE_SUSPENDED);
+	ret = pm_device_state_set(dev, PM_DEVICE_STATE_SUSPEND);
 	zassert_true(ret == -EALREADY, "Could change state");
 
 	zassert_true(net_if_is_suspended(iface), "net iface is not suspended");

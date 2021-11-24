@@ -4,8 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#define DT_DRV_COMPAT zephyr_gsm_ppp
-
 #include <logging/log.h>
 LOG_MODULE_REGISTER(modem_gsm, CONFIG_MODEM_LOG_LEVEL);
 
@@ -26,7 +24,6 @@ LOG_MODULE_REGISTER(modem_gsm, CONFIG_MODEM_LOG_LEVEL);
 
 #include <stdio.h>
 
-#define GSM_UART_NODE                   DT_INST_BUS(0)
 #define GSM_CMD_READ_BUF                128
 #define GSM_CMD_AT_TIMEOUT              K_SECONDS(2)
 #define GSM_CMD_SETUP_TIMEOUT           K_SECONDS(6)
@@ -525,7 +522,8 @@ static struct net_if *ppp_net_if(void)
 static void set_ppp_carrier_on(struct gsm_modem *gsm)
 {
 	static const struct ppp_api *api;
-	const struct device *ppp_dev = device_get_binding(CONFIG_NET_PPP_DRV_NAME);
+	const struct device *ppp_dev =
+		device_get_binding(CONFIG_NET_PPP_DRV_NAME);
 	struct net_if *iface = gsm->iface;
 	int ret;
 
@@ -769,20 +767,6 @@ static int mux_enable(struct gsm_modem *gsm)
 			STRINGIFY(CONFIG_GSM_MUX_MRU_DEFAULT_LEN),
 			&gsm->sem_response,
 			GSM_CMD_AT_TIMEOUT);
-	} else if (IS_ENABLED(CONFIG_MODEM_GSM_QUECTEL)) {
-		ret = modem_cmd_send_nolock(&gsm->context.iface,
-				    &gsm->context.cmd_handler,
-				    &response_cmds[0],
-				    ARRAY_SIZE(response_cmds),
-				    "AT+CMUX=0,0,5,"
-				    STRINGIFY(CONFIG_GSM_MUX_MRU_DEFAULT_LEN),
-				    &gsm->sem_response,
-				    GSM_CMD_AT_TIMEOUT);
-
-		/* Arbitrary delay for Quectel modems to initialize the CMUX,
-		 * without this the AT cmd will fail.
-		 */
-		k_sleep(K_SECONDS(1));
 	} else {
 		/* Generic GSM modem */
 		ret = modem_cmd_send_nolock(&gsm->context.iface,
@@ -837,7 +821,7 @@ static void mux_setup(struct k_work *work)
 {
 	struct gsm_modem *gsm = CONTAINER_OF(work, struct gsm_modem,
 					     gsm_configure_work);
-	const struct device *uart = DEVICE_DT_GET(GSM_UART_NODE);
+	const struct device *uart = device_get_binding(CONFIG_MODEM_GSM_UART_NAME);
 	int ret;
 
 	/* We need to call this to reactivate mux ISR. Note: This is only called
@@ -996,7 +980,7 @@ void gsm_ppp_start(const struct device *dev)
 
 	/* Re-init underlying UART comms */
 	int r = modem_iface_uart_init_dev(&gsm->context.iface,
-				DEVICE_DT_GET(GSM_UART_NODE));
+				device_get_binding(CONFIG_MODEM_GSM_UART_NAME));
 	if (r) {
 		LOG_ERR("modem_iface_uart_init returned %d", r);
 		return;
@@ -1073,7 +1057,7 @@ static int gsm_init(const struct device *dev)
 	gsm->gsm_data.rx_rb_buf_len = sizeof(gsm->gsm_rx_rb_buf);
 
 	r = modem_iface_uart_init(&gsm->context.iface, &gsm->gsm_data,
-				DEVICE_DT_GET(GSM_UART_NODE));
+				device_get_binding(CONFIG_MODEM_GSM_UART_NAME));
 	if (r < 0) {
 		LOG_DBG("iface uart error %d", r);
 		return r;
@@ -1107,5 +1091,5 @@ static int gsm_init(const struct device *dev)
 	return 0;
 }
 
-DEVICE_DT_DEFINE(DT_INST(0, zephyr_gsm_ppp), gsm_init, NULL, &gsm, NULL,
-		 POST_KERNEL, CONFIG_MODEM_GSM_INIT_PRIORITY, NULL);
+DEVICE_DEFINE(gsm_ppp, GSM_MODEM_DEVICE_NAME, gsm_init, NULL, &gsm, NULL,
+	      POST_KERNEL, CONFIG_MODEM_GSM_INIT_PRIORITY, NULL);

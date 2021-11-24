@@ -676,7 +676,7 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 	}
 }
 
-BT_CONN_CB_DEFINE(conn_callbacks) = {
+static struct bt_conn_cb conn_callbacks = {
 	.connected = connected,
 	.disconnected = disconnected,
 };
@@ -685,6 +685,7 @@ void main(void)
 {
 	int err;
 
+	bt_conn_cb_register(&conn_callbacks);
 	k_work_init_delayable(&idle_work, idle_timeout);
 
 	/* Initialize the Bluetooth Subsystem */

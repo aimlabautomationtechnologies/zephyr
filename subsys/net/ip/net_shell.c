@@ -1577,7 +1577,7 @@ static void ipv6_frag_cb(struct net_ipv6_reassembly *reass,
 	   k_ticks_to_ms_ceil32(k_work_delayable_remaining_get(&reass->timer)),
 	   src, net_sprint_ipv6_addr(&reass->dst));
 
-	for (i = 0; i < CONFIG_NET_IPV6_FRAGMENT_MAX_PKT; i++) {
+	for (i = 0; i < NET_IPV6_FRAGMENTS_MAX_PKT; i++) {
 		if (reass->pkt[i]) {
 			struct net_buf *frag = reass->pkt[i]->frags;
 
@@ -3806,8 +3806,7 @@ static void nbr_cb(struct net_nbr *nbr, void *user_data)
 	   net_sprint_ll_addr(
 		   net_nbr_get_lladdr(nbr->idx)->addr,
 		   net_nbr_get_lladdr(nbr->idx)->len),
-	   nbr->idx == NET_NBR_LLADDR_UNKNOWN ? "" :
-		(net_nbr_get_lladdr(nbr->idx)->len == 8U ? "" : padding),
+	   net_nbr_get_lladdr(nbr->idx)->len == 8U ? "" : padding,
 	   net_sprint_ipv6_addr(&net_ipv6_nbr_data(nbr)->addr));
 }
 #endif
@@ -5533,7 +5532,7 @@ static int cmd_net_suspend(const struct shell *shell, size_t argc,
 
 		dev = net_if_get_device(iface);
 
-		ret = pm_device_state_set(dev, PM_DEVICE_STATE_SUSPENDED);
+		ret = pm_device_state_set(dev, PM_DEVICE_STATE_SUSPEND);
 		if (ret != 0) {
 			PR_INFO("Iface could not be suspended: ");
 

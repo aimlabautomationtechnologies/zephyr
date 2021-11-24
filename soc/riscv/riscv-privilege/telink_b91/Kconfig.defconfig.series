@@ -23,10 +23,6 @@ config RISCV_HAS_PLIC
 	bool
 	default y
 
-config RISCV_GP
-	bool
-	default y
-
 config NUM_IRQS
 	int
 	default 64

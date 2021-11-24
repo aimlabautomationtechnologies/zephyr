@@ -5,7 +5,6 @@
 BUILDDIR ?= _build
 DOC_TAG ?= development
 SPHINXOPTS ?= -j auto
-LATEXMKOPTS ?= -halt-on-error -no-shell-escape
 KCONFIG_TURBO_MODE ?= 0
 
 # ------------------------------------------------------------------------------
@@ -26,7 +25,6 @@ configure:
 		-S. \
 		-DDOC_TAG=${DOC_TAG} \
 		-DSPHINXOPTS="${SPHINXOPTS}" \
-		-DLATEXMKOPTS="${LATEXMKOPTS}" \
 		-DKCONFIG_TURBO_MODE=${KCONFIG_TURBO_MODE}
 
 clean:

@@ -32,6 +32,8 @@
 #define FRIEND_BUF_COUNT    ((CONFIG_BT_MESH_FRIEND_QUEUE_SIZE + 1) * \
 			     CONFIG_BT_MESH_FRIEND_LPN_COUNT)
 
+#define FRIEND_ADV(buf) CONTAINER_OF(BT_MESH_ADV(buf), struct friend_adv, adv)
+
 /* PDUs from Friend to the LPN should only be transmitted once with the
  * smallest possible interval (20ms).
  */
@@ -53,15 +55,14 @@ NET_BUF_POOL_FIXED_DEFINE(friend_buf_pool, FRIEND_BUF_COUNT,
 			  BT_MESH_ADV_DATA_SIZE, NULL);
 
 static struct friend_adv {
+	struct bt_mesh_adv adv;
 	uint16_t app_idx;
 } adv_pool[FRIEND_BUF_COUNT];
 
-#define FRIEND_ADV(buf) (*(struct friend_adv **)net_buf_user_data(buf))
-
-static struct friend_adv *adv_alloc(int id)
+static struct bt_mesh_adv *adv_alloc(int id)
 {
 	adv_pool[id].app_idx = BT_MESH_KEY_UNUSED;
-	return &adv_pool[id];
+	return &adv_pool[id].adv;
 }
 
 static bool friend_is_allocated(const struct bt_mesh_friend *frnd)
@@ -157,6 +158,11 @@ static void friend_clear(struct bt_mesh_friend *frnd)
 	memset(frnd->cred, 0, sizeof(frnd->cred));
 
 	if (frnd->last) {
+		/* Cancel the sending if necessary */
+		if (frnd->pending_buf) {
+			BT_MESH_ADV(frnd->last)->busy = 0U;
+		}
+
 		net_buf_unref(frnd->last);
 		frnd->last = NULL;
 	}
@@ -170,7 +176,7 @@ static void friend_clear(struct bt_mesh_friend *frnd)
 		seg->seg_count = 0U;
 	}
 
-	STRUCT_SECTION_FOREACH(bt_mesh_friend_cb, cb) {
+	Z_STRUCT_SECTION_FOREACH(bt_mesh_friend_cb, cb) {
 		if (frnd->established && cb->terminated) {
 			cb->terminated(frnd->subnet->net_idx, frnd->lpn);
 		}
@@ -311,13 +317,12 @@ static struct net_buf *create_friend_pdu(struct bt_mesh_friend *frnd,
 {
 	struct net_buf *buf;
 
-
-	buf = net_buf_alloc(&friend_buf_pool, K_NO_WAIT);
+	buf = bt_mesh_adv_create_from_pool(&friend_buf_pool, adv_alloc,
+					   BT_MESH_ADV_DATA,
+					   FRIEND_XMIT, K_NO_WAIT);
 	if (!buf) {
 		return NULL;
 	}
-
-	FRIEND_ADV(buf) = adv_alloc(net_buf_id(buf));
 
 	net_buf_add_u8(buf, (info->iv_index & 1) << 7); /* Will be reset in encryption */
 
@@ -387,22 +392,13 @@ static int unseg_app_sdu_decrypt(struct bt_mesh_friend *frnd,
 				 struct net_buf *buf,
 				 const struct unseg_app_sdu_meta *meta)
 {
-	struct net_buf_simple in;
-	struct net_buf_simple out;
+	struct net_buf_simple sdu;
 
-	/* Direct the input buffer at the Upper Transport Access PDU, accounting for
-	 * the network header and the 1 byte lower transport header
-	 */
-	net_buf_simple_clone(&buf->b, &in);
-	net_buf_simple_pull(&in, BT_MESH_NET_HDR_LEN);
-	net_buf_simple_pull(&in, 1);
-	in.len -= BT_MESH_MIC_SHORT;
+	net_buf_simple_clone(&buf->b, &sdu);
+	net_buf_simple_pull(&sdu, 10);
+	sdu.len -= 4;
 
-	net_buf_simple_clone(&in, &out);
-	out.len = 0; /* length will be set by decrypt */
-
-	/* Decrypt in place, as we only need to test one key: */
-	return bt_mesh_app_decrypt(meta->key, &meta->crypto, &in, &out);
+	return bt_mesh_app_decrypt(meta->key, &meta->crypto, &sdu, &sdu);
 }
 
 static int unseg_app_sdu_encrypt(struct bt_mesh_friend *frnd,
@@ -412,9 +408,8 @@ static int unseg_app_sdu_encrypt(struct bt_mesh_friend *frnd,
 	struct net_buf_simple sdu;
 
 	net_buf_simple_clone(&buf->b, &sdu);
-	net_buf_simple_pull(&sdu, BT_MESH_NET_HDR_LEN);
-	net_buf_simple_pull(&sdu, 1);
-	sdu.len -= BT_MESH_MIC_SHORT;
+	net_buf_simple_pull(&sdu, 10);
+	sdu.len -= 4;
 
 	return bt_mesh_app_encrypt(meta->key, &meta->crypto, &sdu);
 }
@@ -461,14 +456,14 @@ static int unseg_app_sdu_prepare(struct bt_mesh_friend *frnd,
 }
 
 static int encrypt_friend_pdu(struct bt_mesh_friend *frnd, struct net_buf *buf,
-			      bool flooding_cred)
+			      bool master_cred)
 {
 	const struct bt_mesh_net_cred *cred;
 	uint32_t iv_index;
 	uint16_t src;
 	int err;
 
-	if (flooding_cred) {
+	if (master_cred) {
 		cred = &frnd->subnet->keys[SUBNET_KEY_TX_IDX(frnd->subnet)]
 				.msg;
 	} else {
@@ -714,7 +709,7 @@ int bt_mesh_friend_poll(struct bt_mesh_net_rx *rx, struct net_buf_simple *buf)
 
 	friend_recv_delay(frnd);
 
-	STRUCT_SECTION_FOREACH(bt_mesh_friend_cb, cb) {
+	Z_STRUCT_SECTION_FOREACH(bt_mesh_friend_cb, cb) {
 		if (cb->polled) {
 			cb->polled(frnd->subnet->net_idx, frnd->lpn);
 		}
@@ -724,7 +719,7 @@ int bt_mesh_friend_poll(struct bt_mesh_net_rx *rx, struct net_buf_simple *buf)
 		BT_DBG("Friendship established with 0x%04x", frnd->lpn);
 		frnd->established = 1U;
 
-		STRUCT_SECTION_FOREACH(bt_mesh_friend_cb, cb) {
+		Z_STRUCT_SECTION_FOREACH(bt_mesh_friend_cb, cb) {
 			if (cb->established) {
 				cb->established(frnd->subnet->net_idx, frnd->lpn, frnd->recv_delay,
 						frnd->poll_to);
@@ -1212,7 +1207,6 @@ static void friend_timeout(struct k_work *work)
 		.start = buf_send_start,
 		.end = buf_send_end,
 	};
-	struct net_buf *buf;
 	uint8_t md;
 
 	if (!friend_is_allocated(frnd)) {
@@ -1261,18 +1255,9 @@ static void friend_timeout(struct k_work *work)
 	frnd->queue_size--;
 
 send_last:
-	buf = bt_mesh_adv_create(BT_MESH_ADV_DATA, FRIEND_XMIT, K_NO_WAIT);
-	if (!buf) {
-		BT_ERR("Unable to allocate friend adv buffer");
-		return;
-	}
-
-	net_buf_add_mem(buf, frnd->last->data, frnd->last->len);
-
 	frnd->pending_req = 0U;
 	frnd->pending_buf = 1U;
-	bt_mesh_adv_send(buf, &buf_sent_cb, frnd);
-	net_buf_unref(buf);
+	bt_mesh_adv_send(frnd->last, &buf_sent_cb, frnd);
 }
 
 static void subnet_evt(struct bt_mesh_subnet *sub, enum bt_mesh_key_evt evt)
@@ -1320,9 +1305,7 @@ static void subnet_evt(struct bt_mesh_subnet *sub, enum bt_mesh_key_evt evt)
 	}
 }
 
-BT_MESH_SUBNET_CB_DEFINE(friend) = {
-	.evt_handler = subnet_evt,
-};
+BT_MESH_SUBNET_CB_DEFINE(subnet_evt);
 
 int bt_mesh_friend_init(void)
 {

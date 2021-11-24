@@ -442,7 +442,7 @@ static inline bool spi_is_ready(const struct spi_dt_spec *spec)
 /**
  * @brief Read/write the specified amount of data from the SPI driver.
  *
- * @note This function is synchronous.
+ * Note: This function is synchronous.
  *
  * @param dev Pointer to the device structure for the driver instance
  * @param config Pointer to a valid spi_config structure instance.
@@ -453,9 +453,9 @@ static inline bool spi_is_ready(const struct spi_dt_spec *spec)
  * @param rx_bufs Buffer array where data to be read will be written to,
  *        or NULL if none.
  *
- * @retval frames Positive number of frames received in slave mode.
- * @retval 0 If successful in master mode.
- * @retval -errno Negative errno code on failure.
+ * @retval 0 If successful, negative errno code otherwise. In case of slave
+ *         transaction: if successful it will return the amount of frames
+ *         received, negative errno code otherwise.
  */
 __syscall int spi_transceive(const struct device *dev,
 			     const struct spi_config *config,
@@ -486,7 +486,7 @@ static inline int z_impl_spi_transceive(const struct device *dev,
  * @param rx_bufs Buffer array where data to be read will be written to,
  *        or NULL if none.
  *
- * @return a value from spi_transceive().
+ * @retval a value from spi_transceive()
  */
 static inline int spi_transceive_dt(const struct spi_dt_spec *spec,
 				    const struct spi_buf_set *tx_bufs,
@@ -498,9 +498,7 @@ static inline int spi_transceive_dt(const struct spi_dt_spec *spec,
 /**
  * @brief Read the specified amount of data from the SPI driver.
  *
- * @note This function is synchronous.
- *
- * @note This function is an helper function calling spi_transceive.
+ * Note: This function is synchronous.
  *
  * @param dev Pointer to the device structure for the driver instance
  * @param config Pointer to a valid spi_config structure instance.
@@ -508,8 +506,9 @@ static inline int spi_transceive_dt(const struct spi_dt_spec *spec,
  *        previous operations.
  * @param rx_bufs Buffer array where data to be read will be written to.
  *
- * @retval 0 If successful.
- * @retval -errno Negative errno code on failure.
+ * @retval 0 If successful, negative errno code otherwise.
+ *
+ * @note This function is an helper function calling spi_transceive.
  */
 static inline int spi_read(const struct device *dev,
 			   const struct spi_config *config,
@@ -528,7 +527,7 @@ static inline int spi_read(const struct device *dev,
  * @param spec SPI specification from devicetree
  * @param rx_bufs Buffer array where data to be read will be written to.
  *
- * @return a value from spi_read().
+ * @retval a value from spi_read()
  */
 static inline int spi_read_dt(const struct spi_dt_spec *spec,
 			      const struct spi_buf_set *rx_bufs)
@@ -539,9 +538,7 @@ static inline int spi_read_dt(const struct spi_dt_spec *spec,
 /**
  * @brief Write the specified amount of data from the SPI driver.
  *
- * @note This function is synchronous.
- *
- * @note This function is an helper function calling spi_transceive.
+ * Note: This function is synchronous.
  *
  * @param dev Pointer to the device structure for the driver instance
  * @param config Pointer to a valid spi_config structure instance.
@@ -549,8 +546,9 @@ static inline int spi_read_dt(const struct spi_dt_spec *spec,
  *        previous operations.
  * @param tx_bufs Buffer array where data to be sent originates from.
  *
- * @retval 0 If successful.
- * @retval -errno Negative errno code on failure.
+ * @retval 0 If successful, negative errno code otherwise.
+ *
+ * @note This function is an helper function calling spi_transceive.
  */
 static inline int spi_write(const struct device *dev,
 			    const struct spi_config *config,
@@ -569,7 +567,7 @@ static inline int spi_write(const struct device *dev,
  * @param spec SPI specification from devicetree
  * @param tx_bufs Buffer array where data to be sent originates from.
  *
- * @return a value from spi_write().
+ * @retval a value from spi_write()
  */
 static inline int spi_write_dt(const struct spi_dt_spec *spec,
 			       const struct spi_buf_set *tx_bufs)
@@ -601,9 +599,9 @@ static inline int spi_write_dt(const struct spi_dt_spec *spec,
  *        notify the end of the transaction, and whether it went
  *        successfully or not).
  *
- * @retval frames Positive number of frames received in slave mode.
- * @retval 0 If successful in master mode.
- * @retval -errno Negative errno code on failure.
+ * @retval 0 If successful, negative errno code otherwise. In case of slave
+ *         transaction: if successful it will return the amount of frames
+ *         received, negative errno code otherwise.
  */
 static inline int spi_transceive_async(const struct device *dev,
 				       const struct spi_config *config,
@@ -622,8 +620,6 @@ static inline int spi_transceive_async(const struct device *dev,
  *
  * @note This function is asynchronous.
  *
- * @note This function is an helper function calling spi_transceive_async.
- *
  * @note This function is available only if @kconfig{CONFIG_SPI_ASYNC}
  * is selected.
  *
@@ -637,8 +633,9 @@ static inline int spi_transceive_async(const struct device *dev,
  *        notify the end of the transaction, and whether it went
  *        successfully or not).
  *
- * @retval 0 If successful
- * @retval -errno Negative errno code on failure.
+ * @retval 0 If successful, negative errno code otherwise.
+ *
+ * @note This function is an helper function calling spi_transceive_async.
  */
 static inline int spi_read_async(const struct device *dev,
 				 const struct spi_config *config,
@@ -653,8 +650,6 @@ static inline int spi_read_async(const struct device *dev,
  *
  * @note This function is asynchronous.
  *
- * @note This function is an helper function calling spi_transceive_async.
- *
  * @note This function is available only if @kconfig{CONFIG_SPI_ASYNC}
  * is selected.
  *
@@ -668,8 +663,9 @@ static inline int spi_read_async(const struct device *dev,
  *        notify the end of the transaction, and whether it went
  *        successfully or not).
  *
- * @retval 0 If successful.
- * @retval -errno Negative errno code on failure.
+ * @retval 0 If successful, negative errno code otherwise.
+ *
+ * @note This function is an helper function calling spi_transceive_async.
  */
 static inline int spi_write_async(const struct device *dev,
 				  const struct spi_config *config,
@@ -694,9 +690,6 @@ static inline int spi_write_async(const struct device *dev,
  * @param config Pointer to a valid spi_config structure instance.
  *        Pointer-comparison may be used to detect changes from
  *        previous operations.
- *
- * @retval 0 If successful.
- * @retval -errno Negative errno code on failure.
  */
 __syscall int spi_release(const struct device *dev,
 			  const struct spi_config *config);
@@ -708,22 +701,6 @@ static inline int z_impl_spi_release(const struct device *dev,
 		(const struct spi_driver_api *)dev->api;
 
 	return api->release(dev, config);
-}
-
-/**
- * @brief Release the SPI device specified in @p spi_dt_spec.
- *
- * This is equivalent to:
- *
- *     spi_release(spec->bus, &spec->config);
- *
- * @param spec SPI specification from devicetree
- *
- * @return a value from spi_release().
- */
-static inline int spi_release_dt(const struct spi_dt_spec *spec)
-{
-	return spi_release(spec->bus, &spec->config);
 }
 
 #ifdef __cplusplus

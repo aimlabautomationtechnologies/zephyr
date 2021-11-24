@@ -23,7 +23,6 @@
 #include "net.h"
 #include "rpl.h"
 #include "transport.h"
-#include "host/ecc.h"
 #include "prov.h"
 #include "beacon.h"
 #include "foundation.h"
@@ -88,8 +87,8 @@ static struct bt_mesh_proxy_client {
 	uint16_t filter[CONFIG_BT_MESH_PROXY_FILTER_SIZE];
 	enum __packed {
 		NONE,
-		ACCEPT,
-		REJECT,
+		WHITELIST,
+		BLACKLIST,
 		PROV,
 	} filter_type;
 #if defined(CONFIG_BT_MESH_GATT_PROXY)
@@ -180,11 +179,11 @@ static int filter_set(struct bt_mesh_proxy_client *client,
 	switch (type) {
 	case 0x00:
 		(void)memset(client->filter, 0, sizeof(client->filter));
-		client->filter_type = ACCEPT;
+		client->filter_type = WHITELIST;
 		break;
 	case 0x01:
 		(void)memset(client->filter, 0, sizeof(client->filter));
-		client->filter_type = REJECT;
+		client->filter_type = BLACKLIST;
 		break;
 	default:
 		BT_WARN("Prohibited Filter Type 0x%02x", type);
@@ -256,7 +255,7 @@ static void send_filter_status(struct bt_mesh_proxy_client *client,
 
 	net_buf_simple_add_u8(buf, CFG_FILTER_STATUS);
 
-	if (client->filter_type == ACCEPT) {
+	if (client->filter_type == WHITELIST) {
 		net_buf_simple_add_u8(buf, 0x00);
 	} else {
 		net_buf_simple_add_u8(buf, 0x01);
@@ -376,7 +375,7 @@ static void node_id_start(struct bt_mesh_subnet *sub)
 	sub->node_id = BT_MESH_NODE_IDENTITY_RUNNING;
 	sub->node_id_start = k_uptime_get_32();
 
-	STRUCT_SECTION_FOREACH(bt_mesh_proxy_cb, cb) {
+	Z_STRUCT_SECTION_FOREACH(bt_mesh_proxy_cb, cb) {
 		if (cb->identity_enabled) {
 			cb->identity_enabled(sub->net_idx);
 		}
@@ -396,7 +395,7 @@ void bt_mesh_proxy_identity_stop(struct bt_mesh_subnet *sub)
 	sub->node_id = BT_MESH_NODE_IDENTITY_STOPPED;
 	sub->node_id_start = 0U;
 
-	STRUCT_SECTION_FOREACH(bt_mesh_proxy_cb, cb) {
+	Z_STRUCT_SECTION_FOREACH(bt_mesh_proxy_cb, cb) {
 		if (cb->identity_disabled) {
 			cb->identity_disabled(sub->net_idx);
 		}
@@ -640,9 +639,7 @@ static void subnet_evt(struct bt_mesh_subnet *sub, enum bt_mesh_key_evt evt)
 	}
 }
 
-BT_MESH_SUBNET_CB_DEFINE(gatt_services) = {
-	.evt_handler = subnet_evt,
-};
+BT_MESH_SUBNET_CB_DEFINE(subnet_evt);
 
 static void proxy_ccc_changed(const struct bt_gatt_attr *attr, uint16_t value)
 {
@@ -666,7 +663,7 @@ static ssize_t proxy_ccc_write(struct bt_conn *conn,
 	__ASSERT(client, "No client for connection");
 
 	if (client->filter_type == NONE) {
-		client->filter_type = ACCEPT;
+		client->filter_type = WHITELIST;
 		k_work_submit(&client->send_beacons);
 	}
 
@@ -714,7 +711,7 @@ int bt_mesh_proxy_gatt_enable(void)
 
 	for (i = 0; i < ARRAY_SIZE(clients); i++) {
 		if (clients[i].cli.conn) {
-			clients[i].filter_type = ACCEPT;
+			clients[i].filter_type = WHITELIST;
 		}
 	}
 
@@ -730,8 +727,8 @@ void bt_mesh_proxy_gatt_disconnect(void)
 	for (i = 0; i < ARRAY_SIZE(clients); i++) {
 		struct bt_mesh_proxy_client *client = &clients[i];
 
-		if (client->cli.conn && (client->filter_type == ACCEPT ||
-				     client->filter_type == REJECT)) {
+		if (client->cli.conn && (client->filter_type == WHITELIST ||
+				     client->filter_type == BLACKLIST)) {
 			client->filter_type = NONE;
 			bt_conn_disconnect(client->cli.conn,
 					   BT_HCI_ERR_REMOTE_USER_TERM_CONN);
@@ -766,9 +763,9 @@ void bt_mesh_proxy_addr_add(struct net_buf_simple *buf, uint16_t addr)
 
 	BT_DBG("filter_type %u addr 0x%04x", client->filter_type, addr);
 
-	if (client->filter_type == ACCEPT) {
+	if (client->filter_type == WHITELIST) {
 		filter_add(client, addr);
-	} else if (client->filter_type == REJECT) {
+	} else if (client->filter_type == BLACKLIST) {
 		filter_remove(client, addr);
 	}
 }
@@ -780,7 +777,7 @@ static bool client_filter_match(struct bt_mesh_proxy_client *client,
 
 	BT_DBG("filter_type %u addr 0x%04x", client->filter_type, addr);
 
-	if (client->filter_type == REJECT) {
+	if (client->filter_type == BLACKLIST) {
 		for (i = 0; i < ARRAY_SIZE(client->filter); i++) {
 			if (client->filter[i] == addr) {
 				return false;
@@ -794,7 +791,7 @@ static bool client_filter_match(struct bt_mesh_proxy_client *client,
 		return true;
 	}
 
-	if (client->filter_type == ACCEPT) {
+	if (client->filter_type == WHITELIST) {
 		for (i = 0; i < ARRAY_SIZE(client->filter); i++) {
 			if (client->filter[i] == addr) {
 				return true;
@@ -872,7 +869,7 @@ static void gatt_connected(struct bt_conn *conn, uint8_t err)
 	struct bt_conn_info info;
 
 	bt_conn_get_info(conn, &info);
-	if (info.role != BT_CONN_ROLE_PERIPHERAL) {
+	if (info.role != BT_CONN_ROLE_SLAVE) {
 		return;
 	}
 
@@ -903,7 +900,7 @@ static void gatt_disconnected(struct bt_conn *conn, uint8_t reason)
 	struct bt_conn_info info;
 
 	bt_conn_get_info(conn, &info);
-	if (info.role != BT_CONN_ROLE_PERIPHERAL) {
+	if (info.role != BT_CONN_ROLE_SLAVE) {
 		return;
 	}
 

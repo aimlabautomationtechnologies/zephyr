@@ -267,11 +267,6 @@ FUNC_NORETURN void arch_user_mode_enter(k_thread_entry_t user_entry,
 #endif /* CONFIG_FPU && CONFIG_FPU_SHARING */
 #endif /* CONFIG_MPU_STACK_GUARD */
 
-#if defined(CONFIG_CPU_CORTEX_R)
-	_current->arch.priv_stack_end =
-		_current->arch.priv_stack_start + CONFIG_PRIVILEGED_STACK_SIZE;
-#endif
-
 	z_arm_userspace_enter(user_entry, p1, p2, p3,
 			     (uint32_t)_current->stack_info.start,
 			     _current->stack_info.size -
@@ -514,19 +509,6 @@ void arch_switch_to_main_thread(struct k_thread *main_thread, char *stack_ptr,
 	z_arm_prepare_switch_to_main();
 
 	_current = main_thread;
-
-#if defined(CONFIG_THREAD_LOCAL_STORAGE) && defined(CONFIG_CPU_CORTEX_M)
-	/* On Cortex-M, TLS uses a global variable as pointer to
-	 * the thread local storage area. So this needs to point
-	 * to the main thread's TLS area before switching to any
-	 * thread for the first time, as the pointer is only set
-	 * during context switching.
-	 */
-	extern uintptr_t z_arm_tls_ptr;
-
-	z_arm_tls_ptr = main_thread->tls;
-#endif
-
 #ifdef CONFIG_INSTRUMENT_THREAD_SWITCHING
 	z_thread_mark_switched_in();
 #endif

@@ -267,7 +267,7 @@ struct eth_sam_dev_cfg {
 	uint32_t pin_list_size;
 #endif
 	void (*config_func)(void);
-	const struct device *phy_dev;
+	struct phy_sam_gmac_dev phy;
 };
 
 /* Device run time data */
@@ -277,6 +277,7 @@ struct eth_sam_dev_data {
 	const struct device *ptp_clock;
 #endif
 	uint8_t mac_addr[6];
+	struct k_work_delayable monitor_work;
 	bool link_up;
 	struct gmac_queue queue_list[GMAC_QUEUE_NUM];
 };

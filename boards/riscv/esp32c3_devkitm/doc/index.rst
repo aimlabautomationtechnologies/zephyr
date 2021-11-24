@@ -52,6 +52,7 @@ On Linux and macOS:
 
    export ZEPHYR_TOOLCHAIN_VARIANT="espressif"
    export ESPRESSIF_TOOLCHAIN_PATH="${HOME}/.espressif/tools/riscv32-esp-elf/1.24.0.123_64eb9ff-8.4.0/riscv32-esp-elf"
+   export PATH=$PATH:$ESPRESSIF_TOOLCHAIN_PATH/bin
 
 On Windows:
 
@@ -108,9 +109,7 @@ specific options for the ESP32C3 board, as listed here:
   --esp-idf-path ESP_IDF_PATH
                         path to ESP-IDF
   --esp-device ESP_DEVICE
-                        serial port to flash, default $ESPTOOL_PORT if defined.
-                        If not, esptool will loop over available serial ports until
-                        it finds ESP32 device to flash.
+                        serial port to flash, default /dev/ttyUSB0
   --esp-baud-rate ESP_BAUD_RATE
                         serial baud rate, default 921600
   --esp-flash-size ESP_FLASH_SIZE

@@ -24,19 +24,29 @@ static void pm_device_runtime_state_set(struct pm_device *pm)
 	const struct device *dev = pm->dev;
 	int ret = 0;
 
-	/* Clear transitioning flags */
-	atomic_clear_bit(&dev->pm->flags, PM_DEVICE_FLAG_TRANSITIONING);
-
 	switch (dev->pm->state) {
 	case PM_DEVICE_STATE_ACTIVE:
 		if ((dev->pm->usage == 0) && dev->pm->enable) {
-			ret = pm_device_state_set(dev, PM_DEVICE_STATE_SUSPENDED);
+			dev->pm->state = PM_DEVICE_STATE_SUSPENDING;
+			ret = pm_device_state_set(dev, PM_DEVICE_STATE_SUSPEND);
+			if (ret == 0) {
+				dev->pm->state = PM_DEVICE_STATE_SUSPEND;
+			}
 		}
 		break;
-	case PM_DEVICE_STATE_SUSPENDED:
+	case PM_DEVICE_STATE_SUSPEND:
 		if ((dev->pm->usage > 0) || !dev->pm->enable) {
+			dev->pm->state = PM_DEVICE_STATE_RESUMING;
 			ret = pm_device_state_set(dev, PM_DEVICE_STATE_ACTIVE);
+			if (ret == 0) {
+				dev->pm->state = PM_DEVICE_STATE_ACTIVE;
+			}
 		}
+		break;
+	case PM_DEVICE_STATE_SUSPENDING:
+		__fallthrough;
+	case PM_DEVICE_STATE_RESUMING:
+		/* Do nothing: We are waiting for resume/suspend to finish */
 		break;
 	default:
 		LOG_ERR("Invalid state!!\n");
@@ -62,18 +72,17 @@ static void pm_work_handler(struct k_work *work)
 }
 
 static int pm_device_request(const struct device *dev,
-			enum pm_device_state state, uint32_t pm_flags)
+			     uint32_t target_state, uint32_t pm_flags)
 {
 	int ret = 0;
 
-	SYS_PORT_TRACING_FUNC_ENTER(pm, device_request, dev, state);
-
-	__ASSERT((state == PM_DEVICE_STATE_ACTIVE) ||
-			(state == PM_DEVICE_STATE_SUSPENDED),
+	SYS_PORT_TRACING_FUNC_ENTER(pm, device_request, dev, target_state);
+	__ASSERT((target_state == PM_DEVICE_STATE_ACTIVE) ||
+			(target_state == PM_DEVICE_STATE_SUSPEND),
 			"Invalid device PM state requested");
 
 	if (k_is_pre_kernel()) {
-		if (state == PM_DEVICE_STATE_ACTIVE) {
+		if (target_state == PM_DEVICE_STATE_ACTIVE) {
 			dev->pm->usage++;
 		} else {
 			dev->pm->usage--;
@@ -93,7 +102,7 @@ static int pm_device_request(const struct device *dev,
 		if (dev->pm->usage == 1) {
 			(void)pm_device_state_set(dev, PM_DEVICE_STATE_ACTIVE);
 		} else if (dev->pm->usage == 0) {
-			(void)pm_device_state_set(dev, PM_DEVICE_STATE_SUSPENDED);
+			(void)pm_device_state_set(dev, PM_DEVICE_STATE_SUSPEND);
 		}
 		goto out;
 	}
@@ -105,33 +114,22 @@ static int pm_device_request(const struct device *dev,
 		goto out_unlock;
 	}
 
-	if (state == PM_DEVICE_STATE_ACTIVE) {
+	if (target_state == PM_DEVICE_STATE_ACTIVE) {
 		dev->pm->usage++;
-		if (dev->pm->usage > 1) {
-			goto out_unlock;
-		}
 	} else {
-		/* Check if it is already 0 to avoid an underflow */
-		if (dev->pm->usage == 0) {
-			goto out_unlock;
-		}
-
 		dev->pm->usage--;
-		if (dev->pm->usage > 0) {
-			goto out_unlock;
-		}
 	}
 
 
 	/* Return in case of Async request */
 	if (pm_flags & PM_DEVICE_ASYNC) {
-		atomic_set_bit(&dev->pm->flags, PM_DEVICE_FLAG_TRANSITIONING);
 		(void)k_work_schedule(&dev->pm->work, K_NO_WAIT);
 		goto out_unlock;
 	}
 
 	while ((k_work_delayable_is_pending(&dev->pm->work)) ||
-	       atomic_test_bit(&dev->pm->flags, PM_DEVICE_FLAG_TRANSITIONING)) {
+		(dev->pm->state == PM_DEVICE_STATE_SUSPENDING) ||
+		(dev->pm->state == PM_DEVICE_STATE_RESUMING)) {
 		ret = k_condvar_wait(&dev->pm->condvar, &dev->pm->lock,
 			       K_FOREVER);
 		if (ret != 0) {
@@ -143,10 +141,10 @@ static int pm_device_request(const struct device *dev,
 
 	/*
 	 * dev->pm->state was set in pm_device_runtime_state_set(). As the
-	 * device may not have been properly changed to the state or
+	 * device may not have been properly changed to the target_state or
 	 * another thread we check it here before returning.
 	 */
-	ret = state == dev->pm->state ? 0 : -EIO;
+	ret = target_state == dev->pm->state ? 0 : -EIO;
 
 out_unlock:
 	(void)k_mutex_unlock(&dev->pm->lock);
@@ -167,12 +165,12 @@ int pm_device_get_async(const struct device *dev)
 
 int pm_device_put(const struct device *dev)
 {
-	return pm_device_request(dev, PM_DEVICE_STATE_SUSPENDED, 0);
+	return pm_device_request(dev, PM_DEVICE_STATE_SUSPEND, 0);
 }
 
 int pm_device_put_async(const struct device *dev)
 {
-	return pm_device_request(dev, PM_DEVICE_STATE_SUSPENDED, PM_DEVICE_ASYNC);
+	return pm_device_request(dev, PM_DEVICE_STATE_SUSPEND, PM_DEVICE_ASYNC);
 }
 
 void pm_device_enable(const struct device *dev)
@@ -182,7 +180,7 @@ void pm_device_enable(const struct device *dev)
 		dev->pm->dev = dev;
 		if (dev->pm_control != NULL) {
 			dev->pm->enable = true;
-			dev->pm->state = PM_DEVICE_STATE_SUSPENDED;
+			dev->pm->state = PM_DEVICE_STATE_SUSPEND;
 			k_work_init_delayable(&dev->pm->work, pm_work_handler);
 		}
 		goto out;
@@ -202,7 +200,7 @@ void pm_device_enable(const struct device *dev)
 	 */
 	if (!dev->pm->dev) {
 		dev->pm->dev = dev;
-		dev->pm->state = PM_DEVICE_STATE_SUSPENDED;
+		dev->pm->state = PM_DEVICE_STATE_SUSPEND;
 		k_work_init_delayable(&dev->pm->work, pm_work_handler);
 	} else {
 		k_work_schedule(&dev->pm->work, K_NO_WAIT);
@@ -236,7 +234,8 @@ int pm_device_wait(const struct device *dev, k_timeout_t timeout)
 
 	k_mutex_lock(&dev->pm->lock, K_FOREVER);
 	while ((k_work_delayable_is_pending(&dev->pm->work)) ||
-	       atomic_test_bit(&dev->pm->flags, PM_DEVICE_FLAG_TRANSITIONING)) {
+		(dev->pm->state == PM_DEVICE_STATE_SUSPENDING) ||
+		(dev->pm->state == PM_DEVICE_STATE_RESUMING)) {
 		ret = k_condvar_wait(&dev->pm->condvar, &dev->pm->lock,
 			       timeout);
 		if (ret != 0) {

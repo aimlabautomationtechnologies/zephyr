@@ -34,7 +34,6 @@
 #include "foundation.h"
 #include "beacon.h"
 #include "settings.h"
-#include "host/ecc.h"
 #include "prov.h"
 #include "cfg.h"
 
@@ -184,13 +183,11 @@ int bt_mesh_net_create(uint16_t idx, uint8_t flags, const uint8_t key[16],
 	atomic_set_bit_to(bt_mesh.flags, BT_MESH_IVU_IN_PROGRESS,
 			  BT_MESH_IV_UPDATE(flags));
 
-	/* If IV Update is already in progress, set minimum required hours,
-	 * since the 96-hour minimum requirement doesn't apply in this case straight
-	 * after provisioning.
+	/* Set minimum required hours, since the 96-hour minimum requirement
+	 * doesn't apply straight after provisioning (since we can't know how
+	 * long has actually passed since the network changed its state).
 	 */
-	if (BT_MESH_IV_UPDATE(flags)) {
-		bt_mesh.ivu_duration = BT_MESH_IVU_MIN_HOURS;
-	}
+	bt_mesh.ivu_duration = BT_MESH_IVU_MIN_HOURS;
 
 	if (IS_ENABLED(CONFIG_BT_SETTINGS)) {
 		BT_DBG("Storing network information persistently");
@@ -698,7 +695,7 @@ static void bt_mesh_net_relay(struct net_buf_simple *sbuf,
 	}
 
 	/* When the Friend node relays message for lpn, the message will be
-	 * retransmitted using the managed flooding security credentials and
+	 * retransmitted using the managed master security credentials and
 	 * the Network PDU shall be retransmitted to all network interfaces.
 	 */
 	if (IS_ENABLED(CONFIG_BT_MESH_GATT_PROXY) &&
@@ -1066,22 +1063,13 @@ void bt_mesh_net_pending_seq_store(void)
 	struct seq_val seq;
 	int err;
 
-	if (atomic_test_bit(bt_mesh.flags, BT_MESH_VALID)) {
-		sys_put_le24(bt_mesh.seq, seq.val);
+	sys_put_le24(bt_mesh.seq, seq.val);
 
-		err = settings_save_one("bt/mesh/Seq", &seq, sizeof(seq));
-		if (err) {
-			BT_ERR("Failed to stor Seq value");
-		} else {
-			BT_DBG("Stored Seq value");
-		}
+	err = settings_save_one("bt/mesh/Seq", &seq, sizeof(seq));
+	if (err) {
+		BT_ERR("Failed to stor Seq value");
 	} else {
-		err = settings_delete("bt/mesh/Seq");
-		if (err) {
-			BT_ERR("Failed to clear Seq value");
-		} else {
-			BT_DBG("Cleared Seq value");
-		}
+		BT_DBG("Stored Seq value");
 	}
 }
 
@@ -1090,7 +1078,6 @@ void bt_mesh_net_clear(void)
 	bt_mesh_settings_store_schedule(BT_MESH_SETTINGS_NET_PENDING);
 	bt_mesh_settings_store_schedule(BT_MESH_SETTINGS_IV_PENDING);
 	bt_mesh_settings_store_schedule(BT_MESH_SETTINGS_CFG_PENDING);
-	bt_mesh_settings_store_schedule(BT_MESH_SETTINGS_SEQ_PENDING);
 }
 
 void bt_mesh_net_settings_commit(void)

@@ -159,18 +159,6 @@ void __ram_code ramcode_flash_fsce_high(void)
 	/* FSCE# high level */
 	flash_regs->SMFI_ECINDAR1 = (FLASH_FSCE_HIGH_ADDRESS >> 8) & GENMASK(7, 0);
 
-	/*
-	 * A short delay (15~30 us) before #CS be driven high to ensure
-	 * last byte has been latched in.
-	 *
-	 * For a loop that writing 0 to WNCKR register for N times, the delay
-	 * value will be: ((N-1) / 65.536 kHz) to (N / 65.536 kHz).
-	 * So we perform 2 consecutive writes to WNCKR here to ensure the
-	 * minimum delay is 15us.
-	 */
-	IT83XX_GCTRL_WNCKR = 0;
-	IT83XX_GCTRL_WNCKR = 0;
-
 	/* Writing 0 to EC-indirect memory data register */
 	flash_regs->SMFI_ECINDDR = 0x00;
 }
@@ -209,11 +197,8 @@ void __ram_code ramcode_flash_transaction(int wlen, uint8_t *wbuf, int rlen,
 void __ram_code ramcode_flash_cmd_read_status(enum flash_status_mask mask,
 					      enum flash_status_mask target)
 {
-	struct flash_it8xxx2_regs *const flash_regs = FLASH_IT8XXX2_REG_BASE;
+	uint8_t status[1];
 	uint8_t cmd_rs[] = {FLASH_CMD_RS};
-
-	/* Send read status command */
-	ramcode_flash_transaction(sizeof(cmd_rs), cmd_rs, 0, NULL, CMD_CONTINUE);
 
 	/*
 	 * We prefer no timeout here. We can always get the status
@@ -222,13 +207,14 @@ void __ram_code ramcode_flash_cmd_read_status(enum flash_status_mask mask,
 	 * This will avoid fetching unknown instruction from e-flash
 	 * and causing exception.
 	 */
-	while ((flash_regs->SMFI_ECINDDR & mask) != target) {
-		/* read status and check if it is we want. */
-		;
+	while (1) {
+		/* read status */
+		ramcode_flash_transaction(sizeof(cmd_rs), cmd_rs, 1, status, CMD_END);
+		/* only bit[1:0] valid */
+		if ((status[0] & mask) == target) {
+			break;
+		}
 	}
-
-	/* transaction done, drive #CS high */
-	ramcode_flash_fsce_high();
 }
 
 void __ram_code ramcode_flash_cmd_write_enable(void)

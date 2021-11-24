@@ -25,7 +25,6 @@
 #include "net.h"
 #include "foundation.h"
 #include "beacon.h"
-#include "host/ecc.h"
 #include "prov.h"
 #include "proxy.h"
 
@@ -97,8 +96,6 @@ static inline void adv_send(struct net_buf *buf)
 	param.interval_max = param.interval_min;
 
 	uint64_t time = k_uptime_get();
-
-	ARG_UNUSED(time);
 
 	err = bt_le_adv_start(&param, &ad, 1, NULL, 0);
 

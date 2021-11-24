@@ -1214,7 +1214,7 @@ static int instance_init(const struct shell *shell, const void *p_config,
 	shell->ctx->vt100_ctx.cons.terminal_hei =
 					CONFIG_SHELL_DEFAULT_TERMINAL_HEIGHT;
 	shell->ctx->vt100_ctx.cons.name_len = z_shell_strlen(shell->ctx->prompt);
-	z_flag_use_colors_set(shell, IS_ENABLED(CONFIG_SHELL_VT100_COLORS) && use_colors);
+	z_flag_use_colors_set(shell, IS_ENABLED(CONFIG_SHELL_VT100_COLORS));
 
 	int ret = shell->iface->api->init(shell->iface, p_config,
 					  transport_evt_handler,
@@ -1607,8 +1607,6 @@ int shell_execute_cmd(const struct shell *shell, const char *cmd)
 	k_mutex_lock(&shell->ctx->wr_mtx, K_FOREVER);
 	ret_val = execute(shell);
 	k_mutex_unlock(&shell->ctx->wr_mtx);
-
-	cmd_buffer_clear(shell);
 
 	return ret_val;
 }

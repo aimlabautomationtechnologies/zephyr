@@ -691,6 +691,8 @@ static int bq274xx_enter_shutdown_mode(struct bq274xx_data *data)
 		return status;
 	}
 
+	data->pm_state = PM_DEVICE_STATE_OFF;
+
 	return 0;
 }
 
@@ -731,22 +733,34 @@ static int bq274xx_exit_shutdown_mode(const struct device *dev)
 	return 0;
 }
 
-static int bq274xx_pm_control(const struct device *dev,
-			      enum pm_device_action action)
+static int bq274xx_pm_control(const struct device *dev, uint32_t ctrl_command,
+				  enum pm_device_state *state)
 {
-	int ret;
+	int ret = 0;
 	struct bq274xx_data *data = dev->data;
 
-	switch (action) {
-	case PM_DEVICE_ACTION_TURN_OFF:
-		ret = bq274xx_enter_shutdown_mode(data);
+	switch (ctrl_command) {
+	case PM_DEVICE_STATE_SET:
+		if (*state == PM_DEVICE_STATE_OFF) {
+			ret = bq274xx_enter_shutdown_mode(data);
+			if (ret < 0) {
+				LOG_ERR("Unable to enter off state");
+			}
+		} else if (*state == PM_DEVICE_STATE_ACTIVE) {
+			ret = bq274xx_exit_shutdown_mode(dev);
+			if (ret < 0) {
+				LOG_ERR("Unable to enter active state");
+			}
+		} else {
+			LOG_ERR("State to set is not implemented");
+			ret = -ENOTSUP;
+		}
 		break;
-	case PM_DEVICE_ACTION_RESUME:
-		ret = bq274xx_exit_shutdown_mode(dev);
+	case PM_DEVICE_STATE_GET:
+		*state = data->pm_state;
 		break;
 	default:
-		ret = -ENOTSUP;
-		break;
+		ret = -EINVAL;
 	}
 
 	return ret;

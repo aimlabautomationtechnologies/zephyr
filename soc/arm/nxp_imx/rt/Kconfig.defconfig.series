@@ -128,13 +128,9 @@ config FLASH_BASE_ADDRESS
 
 endif # CODE_FLEXSPI2
 
-config USB_MCUX
+config USB_DC_NXP_EHCI
 	default y
-	depends on USB_DEVICE_DRIVER
-
-choice USB_MCUX_CONTROLLER_TYPE
-	default USB_DC_NXP_EHCI
-endchoice
+	depends on USB
 
 config VIDEO_MCUX_CSI
 	default y if HAS_MCUX_CSI
@@ -155,24 +151,6 @@ choice SEGGER_SYSVIEW_SECTION
 	default SEGGER_SYSVIEW_SECTION_DTCM if $(dt_chosen_enabled,$(DT_CHOSEN_Z_DTCM))
 	depends on SEGGER_SYSTEMVIEW
 endchoice
-
-#
-# MBEDTLS is larger but much faster than TinyCrypt so choose wisely
-#
-config MBEDTLS
-#config TINYCRYPT
-	default y if CSPRING_ENABLED
-	depends on ENTROPY_GENERATOR
-
-if MBEDTLS
-#
-# MBEDTLS CTR_DRBG code path needs extra stack space for initialization than
-# what the ztest_thread_stack defaults to.
-#
-config TEST_EXTRA_STACKSIZE
-	int
-	default 1024
-endif # MBEDTLS
 
 source "soc/arm/nxp_imx/rt/Kconfig.defconfig.mimxrt*"
 

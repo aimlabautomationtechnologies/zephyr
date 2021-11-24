@@ -28,12 +28,14 @@
 #define TMP116_CFGR_DATA_READY BIT(13)
 
 struct tmp116_data {
+	const struct device *i2c;
 	uint16_t sample;
 	uint16_t id;
 };
 
 struct tmp116_dev_config {
-	struct i2c_dt_spec bus;
+	uint16_t i2c_addr;
+	char *i2c_bus_label;
 };
 
 #endif /*  ZEPHYR_DRIVERS_SENSOR_TMP116_TMP116_H_ */
