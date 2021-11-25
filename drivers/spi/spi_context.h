@@ -223,11 +223,6 @@ static inline int spi_context_cs_configure_all(struct spi_context *ctx)
 			return -ENODEV;
 		}
 
-		/* Validate CS active levels are equivalent */
-		__ASSERT(spi_context_cs_active_level(ctx) ==
-			 (cs_gpio->dt_flags & GPIO_ACTIVE_LOW),
-			 "Devicetree and spi_context CS levels are not equal");
-
 		ret = gpio_pin_configure_dt(cs_gpio, GPIO_OUTPUT_INACTIVE);
 		if (ret < 0) {
 			return ret;
