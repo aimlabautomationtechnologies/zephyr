@@ -223,9 +223,9 @@ static inline void print_nothing(const char *fmt, ...)
 #endif /* CONFIG_ARCH_POSIX */
 
 #if CONFIG_ZTEST_FAIL_SUMMARY
-#define TC_END_FAIL_SUMMARY ztest_print_fail_summary()
+#define TC_END_FAIL_SUMMARY(result) ztest_print_fail_summary(result)
 #else
-#define TC_END_FAIL_SUMMARY
+#define TC_END_FAIL_SUMMARY(result)
 #endif // CONFIG_ZTEST_FAIL_SUMMARY
 
 #ifndef TC_END_REPORT
@@ -236,7 +236,7 @@ static inline void print_nothing(const char *fmt, ...)
 		TC_END(result,                                      \
 		       "PROJECT EXECUTION %s\n",               \
 		       (result) == TC_PASS ? "SUCCESSFUL" : "FAILED");	\
-		TC_END_FAIL_SUMMARY;                                    \
+		TC_END_FAIL_SUMMARY(result);                            \
 		TC_END_POST(result);                                    \
 	} while (0)
 #endif
