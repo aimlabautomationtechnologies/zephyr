@@ -456,18 +456,22 @@ int ztest_fail_summary_append( const char *fmt, ... )
 	return result;
 }
 
-void ztest_print_fail_summary( void )
+void ztest_print_fail_summary( int result )
 {
 	// always terminate end of buffer just in case
 	summary_buffer[CONFIG_ZTEST_FAIL_SUMMARY_BUFFER_LEN-1] = '\0';
-	PRINT_LINE;
-	printk( "Failed Test Summary:\n" );
-	printk( "%s", summary_buffer );
-	if( summary_buffer_idx > CONFIG_ZTEST_FAIL_SUMMARY_BUFFER_LEN-1 )
+	
+	if( result == TC_FAIL )
 	{
-		printk( "\n... summary buffer full, other tests have failed\n" );
+		PRINT_LINE;
+		printk( "Failed Test Summary:\n" );
+		printk( "%s", summary_buffer );
+		if( summary_buffer_idx > CONFIG_ZTEST_FAIL_SUMMARY_BUFFER_LEN-1 )
+		{
+			printk( "\n... summary buffer full, other tests have failed\n" );
+		}
+		PRINT_LINE;
 	}
-	PRINT_LINE;
 }
 
 #endif // CONFIG_ZTEST_FAIL_SUMMARY
