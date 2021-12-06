@@ -92,6 +92,16 @@ config ZTEST_NO_YIELD
 	  spin in a loop. This is useful for low power mode tests, where
 	  yielding to the idle thread may put the board into a low power state
 	  where a debugger cannot connect to it.
+	  
+config ZTEST_FAIL_SUMMARY
+	bool "Collect test fail messages and re-print them in a summary"
+	default n
+
+config ZTEST_FAIL_SUMMARY_BUFFER_LEN
+	int
+	default 2048
+
+endif # ZTEST
 
 if ZTEST_NEW_API
 
@@ -150,13 +160,6 @@ config ZTEST_VERBOSE_SUMMARY
 	  just in one line.
 
 endif # ZTEST_NEW_API
-
-config TEST_LOGGING_FLUSH_AFTER_TEST
-	bool "When enabled logs are flushed after each test case"
-	default y
-	depends on MULTITHREADING
-
-endif # ZTEST
 
 config ZTEST_MOCKING
 	bool "Mocking support functions"
