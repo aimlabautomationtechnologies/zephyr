@@ -25,6 +25,12 @@ extern "C" {
 
 const char *ztest_relative_filename(const char *file);
 void ztest_test_fail(void);
+
+#if CONFIG_ZTEST_FAIL_SUMMARY
+int ztest_fail_summary_vappend( const char *fmt, va_list ap );
+int ztest_fail_summary_append( const char *fmt, ... );
+#endif // CONFIG_ZTEST_FAIL_SUMMARY
+
 #if CONFIG_ZTEST_ASSERT_VERBOSE == 0
 
 static inline bool z_zassert_(bool cond, const char *file, int line)
@@ -54,6 +60,16 @@ static inline bool z_zassert(bool cond,
 		va_list vargs;
 
 		va_start(vargs, msg);
+#if CONFIG_ZTEST_FAIL_SUMMARY
+		va_list vargs2;
+		va_copy( vargs2, vargs );
+		// format the failure strings into the summary buffer
+		ztest_fail_summary_append("    Assertion failed at %s:%d: %s: %s\n", ztest_relative_filename(file), line, func, default_msg);
+		ztest_fail_summary_append("    ");
+		ztest_fail_summary_vappend( msg, vargs2 );
+		ztest_fail_summary_append("\n----\n");
+		va_end( vargs2 );
+#endif
 		PRINT("\n    Assertion failed at %s:%d: %s: %s\n",
 		      ztest_relative_filename(file), line, func, default_msg);
 		vprintk(msg, vargs);

@@ -73,6 +73,14 @@ config ZTEST_ASSERT_HOOK
 	  error test case. Remember to add ignore_fault tag in yaml file when
 	  using twister to run testing.
 
+config ZTEST_FAIL_SUMMARY
+	bool "Collect test fail messages and re-print them in a summary"
+	default n
+
+config ZTEST_FAIL_SUMMARY_BUFFER_LEN
+	int
+	default 2048
+		
 endif # ZTEST
 
 config ZTEST_MOCKING
