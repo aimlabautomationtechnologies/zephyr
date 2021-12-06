@@ -106,6 +106,7 @@ config ZTEST_RULE_1CPU
 
 endmenu
 
+
 config ZTEST_VERIFY_RUN_ALL
 	bool "Validates all defined tests have ran"
 	default y
