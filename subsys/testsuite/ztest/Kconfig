@@ -100,7 +100,7 @@ config ZTEST_FAIL_SUMMARY
 config ZTEST_FAIL_SUMMARY_BUFFER_LEN
 	int
 	default 2048
-
+		
 endif # ZTEST
 
 if ZTEST_NEW_API
