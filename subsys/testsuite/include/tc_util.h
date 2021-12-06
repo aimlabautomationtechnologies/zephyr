@@ -183,6 +183,12 @@ static inline void test_time_ms(void)
 #define TC_END_POST(result)
 #endif /* CONFIG_ARCH_POSIX */
 
+#if CONFIG_ZTEST_FAIL_SUMMARY
+#define TC_END_FAIL_SUMMARY ztest_print_fail_summary()
+#else
+#define TC_END_FAIL_SUMMARY
+#endif // CONFIG_ZTEST_FAIL_SUMMARY
+
 #ifndef TC_END_REPORT
 #define TC_END_REPORT(result)                               \
 	do {                                                    \
@@ -191,6 +197,7 @@ static inline void test_time_ms(void)
 		TC_END(result,                                      \
 		       "PROJECT EXECUTION %s\n",               \
 		       (result) == TC_PASS ? "SUCCESSFUL" : "FAILED");	\
+		TC_END_FAIL_SUMMARY;                                    \
 		TC_END_POST(result);                                    \
 	} while (0)
 #endif

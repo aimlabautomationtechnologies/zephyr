@@ -432,6 +432,48 @@ int z_ztest_run_test_suite(const char *name, struct unit_test *suite)
 	return fail;
 }
 
+#if CONFIG_ZTEST_FAIL_SUMMARY
+
+static char summary_buffer[CONFIG_ZTEST_FAIL_SUMMARY_BUFFER_LEN] = { '\0' };
+static size_t summary_buffer_idx = 0;
+
+int ztest_fail_summary_vappend( const char *fmt, va_list ap )
+{
+	int result = vsnprintk( &summary_buffer[summary_buffer_idx], CONFIG_ZTEST_FAIL_SUMMARY_BUFFER_LEN - summary_buffer_idx, fmt, ap );
+
+	if( result > 0 ) summary_buffer_idx += result;
+
+	return result;
+}
+
+int ztest_fail_summary_append( const char *fmt, ... )
+{
+	va_list args;
+	int result = 0;
+
+	va_start( args, fmt );
+	result = ztest_fail_summary_vappend( fmt, args );
+	va_end( args );
+
+	return result;
+}
+
+void ztest_print_fail_summary( void )
+{
+	// always terminate end of buffer just in case
+	summary_buffer[CONFIG_ZTEST_FAIL_SUMMARY_BUFFER_LEN-1] = '\0';
+	PRINT_LINE;
+	printk( "Failed Test Summary:\n" );
+	printk( "%s", summary_buffer );
+	if( summary_buffer_idx > CONFIG_ZTEST_FAIL_SUMMARY_BUFFER_LEN-1 )
+	{
+		printk( "\n... summary buffer full, other tests have failed\n" );
+	}
+	PRINT_LINE;
+}
+
+#endif // CONFIG_ZTEST_FAIL_SUMMARY
+
 void end_report(void)
 {
 	if (test_status) {
