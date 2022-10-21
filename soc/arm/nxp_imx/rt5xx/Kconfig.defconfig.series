@@ -15,6 +15,7 @@ config NUM_IRQS
 	default 74
 
 config ZTEST_NO_YIELD
+	bool
 	default y if (PM && ZTEST)
 
 #

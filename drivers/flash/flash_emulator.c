@@ -1,10 +1,10 @@
 
 #define DT_DRV_COMPAT zephyr_emu_flash
 
-#include <zephyr.h>
-#include <drivers/flash.h>
-#include <drivers/eeprom.h>
-#include <logging/log.h>
+#include <zephyr/kernel.h>
+#include <zephyr/drivers/flash.h>
+#include <zephyr/drivers/eeprom.h>
+#include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER( flash_emulator, CONFIG_FLASH_LOG_LEVEL );
 
 #define DEV_CONFIG(dev) ((dev)->config)

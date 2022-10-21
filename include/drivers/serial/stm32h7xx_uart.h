@@ -19,8 +19,8 @@
 extern "C" {
 #endif
 
-#include <device.h>
-#include <drivers/uart.h>
+#include <zephyr/device.h>
+#include <zephyr/drivers/uart.h>
 #include <stm32h7xx_ll_usart.h>
 
 void uart_stm32h7xx_uart_enable(const struct device *dev);
