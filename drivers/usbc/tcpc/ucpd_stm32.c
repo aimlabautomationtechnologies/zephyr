@@ -6,16 +6,17 @@
 
 #define DT_DRV_COMPAT st_stm32_ucpd
 
-#include <logging/log.h>
+#include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(ucpd_stm32, CONFIG_USBC_LOG_LEVEL);
 
-#include <device.h>
-#include <sys/util.h>
-#include <kernel.h>
+#include <zephyr/device.h>
+#include <zephyr/sys/util.h>
+#include <zephyr/kernel.h>
 #include <soc.h>
 #include <stddef.h>
-#include <math/ilog2.h>
+#include <zephyr/math/ilog2.h>
 #include <stm32g0xx_ll_system.h>
+#include <zephyr/irq.h>
 
 #include "ucpd_stm32_priv.h"
 
@@ -639,7 +640,7 @@ static void ucpd_manage_tx(struct alert_info *info)
 
 	case STATE_ACTIVE_TCPM:
 		/*
-		 * Check if tx msg has finsihed. For TCPM messages
+		 * Check if tx msg has finished. For TCPM messages
 		 * transmit is not complete until a GoodCRC message
 		 * matching the msgID just sent is received. But, a tx
 		 * message can fail due to collision or underrun,
@@ -721,7 +722,7 @@ static void ucpd_manage_tx(struct alert_info *info)
 			}
 		} else if (atomic_test_and_clear_bit(&info->evt, UCPD_EVT_RX_MSG)) {
 			/*
-			 * In the case of a collsion, it's possible the port
+			 * In the case of a collision, it's possible the port
 			 * partner may not send a GoodCRC and instead send the
 			 * message that was colliding. If a message is received
 			 * in this state, then treat it as a discard from an
@@ -778,7 +779,7 @@ static void ucpd_alert_handler(struct k_work *item)
 	}
 
 	/*
-	 * USB-PD messages are intiated in TCPM stack (PRL
+	 * USB-PD messages are initiated in TCPM stack (PRL
 	 * layer). However, GoodCRC messages are initiated within the
 	 * UCPD driver based on USB-PD rx messages. These 2 types of
 	 * transmit paths are managed via events.

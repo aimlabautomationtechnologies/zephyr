@@ -81,11 +81,6 @@ foreach(root ${BOARD_ROOT})
         )
 
       list(APPEND
-        shield_dts_fixups
-        ${SHIELD_DIR_${s}}/dts_fixup.h
-        )
-
-      list(APPEND
         SHIELD_DIRS
         ${SHIELD_DIR_${s}}
         )
@@ -112,7 +107,7 @@ foreach(root ${BOARD_ROOT})
 endforeach()
 
 # Prepare shield usage command printing.
-# This command prints all ishield in the system in the following cases:
+# This command prints all shields in the system in the following cases:
 # - User specifies an invalid SHIELD
 # - User invokes '<build-command> shields' target
 list(SORT SHIELD_LIST)

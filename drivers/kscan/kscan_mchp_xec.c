@@ -6,21 +6,22 @@
 
 #define DT_DRV_COMPAT microchip_xec_kscan
 
-#include <arch/arm/aarch32/cortex_m/cmsis.h>
+#include <zephyr/arch/arm/aarch32/cortex_m/cmsis.h>
 #include <errno.h>
-#include <device.h>
+#include <zephyr/device.h>
 #ifdef CONFIG_SOC_SERIES_MEC172X
-#include <drivers/clock_control/mchp_xec_clock_control.h>
-#include <drivers/interrupt_controller/intc_mchp_xec_ecia.h>
+#include <zephyr/drivers/clock_control/mchp_xec_clock_control.h>
+#include <zephyr/drivers/interrupt_controller/intc_mchp_xec_ecia.h>
 #endif
-#include <drivers/kscan.h>
+#include <zephyr/drivers/kscan.h>
 #ifdef CONFIG_PINCTRL
-#include <drivers/pinctrl.h>
+#include <zephyr/drivers/pinctrl.h>
 #endif
-#include <kernel.h>
+#include <zephyr/kernel.h>
 #include <soc.h>
-#include <sys/atomic.h>
-#include <logging/log.h>
+#include <zephyr/sys/atomic.h>
+#include <zephyr/logging/log.h>
+#include <zephyr/irq.h>
 
 #define LOG_LEVEL CONFIG_KSCAN_LOG_LEVEL
 LOG_MODULE_REGISTER(kscan_mchp_xec);
@@ -31,7 +32,7 @@ LOG_MODULE_REGISTER(kscan_mchp_xec);
 #define KEYBOARD_COLUMN_DRIVE_ALL       -2
 #define KEYBOARD_COLUMN_DRIVE_NONE      -1
 
-/* Poll period/debouncing rely onthe 32KHz clock with 30 usec clock cycles */
+/* Poll period/debouncing rely on the 32KHz clock with 30 usec clock cycles */
 #define CLOCK_32K_HW_CYCLES_TO_US(X) \
 	(uint32_t)((((uint64_t)(X) * 1000000U) / sys_clock_hw_cycles_per_sec()))
 /* Milliseconds in microseconds */
@@ -162,7 +163,7 @@ static uint8_t read_keyboard_row(const struct device *dev)
 
 static bool is_matrix_ghosting(const uint8_t *state)
 {
-	/* matrix keyboard designs are suceptible to ghosting.
+	/* matrix keyboard designs are susceptible to ghosting.
 	 * An extra key appears to be pressed when 3 keys
 	 * belonging to the same block are pressed.
 	 * for example, in the following block
@@ -186,7 +187,7 @@ static bool is_matrix_ghosting(const uint8_t *state)
 			 * flowing from a key which was never pressed. in our
 			 * case, current flowing is a bit set to 1 as we
 			 * flipped the bits when the matrix was scanned.
-			 * now we or the colums using z&(z-1) which is
+			 * now we or the columns using z&(z-1) which is
 			 * non-zero only if z has more than one bit set.
 			 */
 			uint8_t common_row_bits = state[c] & state[c_n];

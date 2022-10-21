@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <logging/log.h>
+#include <zephyr/logging/log.h>
 LOG_MODULE_DECLARE(net_gptp, CONFIG_NET_GPTP_LOG_LEVEL);
 
 #include "gptp_messages.h"
@@ -399,7 +399,7 @@ static void gptp_md_pdelay_compute(int port)
 
 	/*
 	 * Currently, if the computed delay is negative, this means
-	 * that it is negligeable enough compared to other factors.
+	 * that it is negligible enough compared to other factors.
 	 */
 	if ((port_ds->neighbor_prop_delay <=
 	     port_ds->neighbor_prop_delay_thresh)) {
@@ -572,7 +572,7 @@ static void gptp_md_pdelay_req_state_machine(int port)
 	port_ds = GPTP_PORT_DS(port);
 
 	/* Unset AS-Capable if multiple responses to a pDelay request have been
-	 * reveived.
+	 * received.
 	 */
 	if (state->rcvd_pdelay_resp > 1 || state->rcvd_pdelay_follow_up > 1) {
 		port_ds->as_capable = false;

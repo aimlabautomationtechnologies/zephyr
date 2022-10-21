@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2018 Intel Corporation.
+ * Copyright (c) 2018,2022 Intel Corporation.
  *
  * SPDX-License-Identifier: Apache-2.0
  */
-#include <zephyr.h>
-#include <ztest.h>
-#include <spinlock.h>
+#include "zephyr/ztest_test_new.h"
+#include <zephyr/kernel.h>
+#include <zephyr/ztest.h>
+#include <zephyr/spinlock.h>
 
 BUILD_ASSERT(CONFIG_MP_NUM_CPUS > 1);
 
@@ -70,7 +71,7 @@ void assert_post_action(const char *file, unsigned int line)
  *
  * @see k_spin_lock()
  */
-void test_spinlock_no_recursive(void)
+ZTEST(spinlock, test_spinlock_no_recursive)
 {
 	k_spinlock_key_t re;
 
@@ -91,7 +92,7 @@ void test_spinlock_no_recursive(void)
  *
  * @see k_spin_unlock()
  */
-void test_spinlock_unlock_error(void)
+ZTEST(spinlock, test_spinlock_unlock_error)
 {
 	key = k_spin_lock(&lock);
 
@@ -110,12 +111,37 @@ void test_spinlock_unlock_error(void)
  *
  * @see k_spin_release()
  */
-void test_spinlock_release_error(void)
+ZTEST(spinlock, test_spinlock_release_error)
 {
 	key = k_spin_lock(&lock);
 
 	set_assert_valid(true);
 	k_spin_release(&mylock);
+
+	ztest_test_fail();
+}
+
+/**
+ * @brief Test unlocking spinlock held over the time limit
+ *
+ * @details Validate unlocking spinlock held past the time limit will trigger
+ * assertion.
+ *
+ * @ingroup kernel_spinlock_tests
+ *
+ * @see k_spin_unlock()
+ */
+ZTEST(spinlock, test_spinlock_lock_time_limit)
+{
+	Z_TEST_SKIP_IFNDEF(CONFIG_SPIN_LOCK_TIME_LIMIT);
+
+	key = k_spin_lock(&lock);
+
+	for (volatile int i = 0; i < 100000; i++) {
+	}
+
+	set_assert_valid(true);
+	k_spin_unlock(&lock, key);
 
 	ztest_test_fail();
 }

@@ -3,10 +3,10 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  */
-#include <zephyr.h>
+#include <zephyr/kernel.h>
 #include "msgdev.h"
 
-#include <logging/log.h>
+#include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
 #define STACK_SIZE 2048
@@ -119,7 +119,7 @@ static void record_latencies(struct msg *m, uint32_t latency)
 	}
 
 	/* It might be a potential race condition in this subroutine.
-	 * We check if the msg seqence is reaching the MAX EVENT first.
+	 * We check if the msg sequence is reaching the MAX EVENT first.
 	 * To prevent the coming incorrect changes of the array.
 	 */
 	if (m->seq >= MAX_EVENTS) {

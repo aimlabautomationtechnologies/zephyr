@@ -6,18 +6,20 @@
 
 #define DT_DRV_COMPAT nuvoton_npcx_uart
 
-#include <sys/__assert.h>
-#include <drivers/gpio.h>
-#include <drivers/uart.h>
-#include <drivers/clock_control.h>
-#include <kernel.h>
-#include <pm/device.h>
-#include <pm/pm.h>
+#include <zephyr/sys/__assert.h>
+#include <zephyr/drivers/gpio.h>
+#include <zephyr/drivers/pinctrl.h>
+#include <zephyr/drivers/uart.h>
+#include <zephyr/drivers/clock_control.h>
+#include <zephyr/kernel.h>
+#include <zephyr/pm/device.h>
+#include <zephyr/pm/policy.h>
 #include <soc.h>
 #include "soc_miwu.h"
 #include "soc_power.h"
 
-#include <logging/log.h>
+#include <zephyr/logging/log.h>
+#include <zephyr/irq.h>
 LOG_MODULE_REGISTER(uart_npcx, CONFIG_UART_LOG_LEVEL);
 
 /* Driver config */
@@ -31,15 +33,14 @@ struct uart_npcx_config {
 	/* int-mux configuration */
 	const struct npcx_wui uart_rx_wui;
 	/* pinmux configuration */
-	const uint8_t alts_size;
-	const struct npcx_alt *alts_list;
+	const struct pinctrl_dev_config *pcfg;
 };
 
-enum uart_pm_constraint_flag {
-	UART_PM_CONSTRAINT_TX_FLAG,
-	UART_PM_CONSTRAINT_RX_FLAG,
+enum uart_pm_policy_state_flag {
+	UART_PM_POLICY_STATE_TX_FLAG,
+	UART_PM_POLICY_STATE_RX_FLAG,
 
-	UART_PM_CONSTRAINT_FLAG_COUNT,
+	UART_PM_POLICY_STATE_FLAG_COUNT,
 };
 
 /* Driver data */
@@ -52,30 +53,30 @@ struct uart_npcx_data {
 	void *user_data;
 #endif
 #ifdef CONFIG_PM
-	ATOMIC_DEFINE(pm_constraint_flag, UART_PM_CONSTRAINT_FLAG_COUNT);
+	ATOMIC_DEFINE(pm_policy_state_flag, UART_PM_POLICY_STATE_FLAG_COUNT);
 #ifdef CONFIG_UART_CONSOLE_INPUT_EXPIRED
 	struct k_work_delayable rx_refresh_timeout_work;
 #endif
 #endif
 };
 
-#if defined(CONFIG_PM) && defined(CONFIG_UART_INTERRUPT_DRIVEN)
-static void uart_npcx_pm_constraint_set(struct uart_npcx_data *data,
-					enum uart_pm_constraint_flag flag)
+#ifdef CONFIG_PM
+static void uart_npcx_pm_policy_state_lock_get(struct uart_npcx_data *data,
+					       enum uart_pm_policy_state_flag flag)
 {
-	if (atomic_test_and_set_bit(data->pm_constraint_flag, flag) == 0) {
-		pm_constraint_set(PM_STATE_SUSPEND_TO_IDLE);
+	if (atomic_test_and_set_bit(data->pm_policy_state_flag, flag) == 0) {
+		pm_policy_state_lock_get(PM_STATE_SUSPEND_TO_IDLE, PM_ALL_SUBSTATES);
 	}
 }
 
-static void uart_npcx_pm_constraint_rel(struct uart_npcx_data *data,
-					enum uart_pm_constraint_flag flag)
+static void uart_npcx_pm_policy_state_lock_put(struct uart_npcx_data *data,
+					    enum uart_pm_policy_state_flag flag)
 {
-	if (atomic_test_and_clear_bit(data->pm_constraint_flag, flag) == 1) {
-		pm_constraint_release(PM_STATE_SUSPEND_TO_IDLE);
+	if (atomic_test_and_clear_bit(data->pm_policy_state_flag, flag) == 1) {
+		pm_policy_state_lock_put(PM_STATE_SUSPEND_TO_IDLE, PM_ALL_SUBSTATES);
 	}
 }
-#endif /* defined(CONFIG_PM) && defined(CONFIG_UART_INTERRUPT_DRIVEN) */
+#endif
 
 /* UART local functions */
 static int uart_set_npcx_baud_rate(struct uart_reg *const inst, int baud_rate, int src_clk)
@@ -151,7 +152,7 @@ static int uart_npcx_fifo_fill(const struct device *dev, const uint8_t *tx_data,
 #ifdef CONFIG_PM
 		struct uart_npcx_data *data = dev->data;
 
-		uart_npcx_pm_constraint_set(data, UART_PM_CONSTRAINT_TX_FLAG);
+		uart_npcx_pm_policy_state_lock_get(data, UART_PM_POLICY_STATE_TX_FLAG);
 		inst->UTBUF = tx_data[tx_bytes++];
 		inst->UFTCTL |= BIT(NPCX_UFTCTL_NXMIP_EN);
 #else
@@ -277,7 +278,7 @@ static void uart_npcx_isr(const struct device *dev)
 	if (uart_npcx_irq_rx_ready(dev)) {
 		k_timeout_t delay = K_MSEC(CONFIG_UART_CONSOLE_INPUT_EXPIRED_TIMEOUT);
 
-		uart_npcx_pm_constraint_set(data, UART_PM_CONSTRAINT_RX_FLAG);
+		uart_npcx_pm_policy_state_lock_get(data, UART_PM_POLICY_STATE_RX_FLAG);
 		k_work_reschedule(&data->rx_refresh_timeout_work, delay);
 	}
 #endif
@@ -291,7 +292,7 @@ static void uart_npcx_isr(const struct device *dev)
 
 	if (IS_BIT_SET(inst->UFTCTL, NPCX_UFTCTL_NXMIP_EN) &&
 	    IS_BIT_SET(inst->UFTSTS, NPCX_UFTSTS_NXMIP)) {
-		uart_npcx_pm_constraint_rel(data, UART_PM_CONSTRAINT_TX_FLAG);
+		uart_npcx_pm_policy_state_lock_put(data, UART_PM_POLICY_STATE_TX_FLAG);
 		inst->UFTCTL &= ~BIT(NPCX_UFTCTL_NXMIP_EN);
 	}
 #endif /* CONFIG_PM */
@@ -381,7 +382,7 @@ static __unused void uart_npcx_rx_wk_isr(const struct device *dev, struct npcx_w
 	struct uart_npcx_data *data = dev->data;
 	k_timeout_t delay = K_MSEC(CONFIG_UART_CONSOLE_INPUT_EXPIRED_TIMEOUT);
 
-	uart_npcx_pm_constraint_set(data, UART_PM_CONSTRAINT_RX_FLAG);
+	uart_npcx_pm_policy_state_lock_get(data, UART_PM_POLICY_STATE_RX_FLAG);
 	k_work_reschedule(&data->rx_refresh_timeout_work, delay);
 #endif
 
@@ -398,7 +399,7 @@ static void uart_npcx_rx_refresh_timeout(struct k_work *work)
 	struct uart_npcx_data *data =
 		CONTAINER_OF(work, struct uart_npcx_data, rx_refresh_timeout_work);
 
-	uart_npcx_pm_constraint_rel(data, UART_PM_CONSTRAINT_RX_FLAG);
+	uart_npcx_pm_policy_state_lock_put(data, UART_PM_POLICY_STATE_RX_FLAG);
 }
 #endif
 
@@ -433,6 +434,11 @@ static int uart_npcx_init(const struct device *dev)
 	struct uart_reg *const inst = config->inst;
 	uint32_t uart_rate;
 	int ret;
+
+	if (!device_is_ready(clk_dev)) {
+		LOG_ERR("clock control device not ready");
+		return -ENODEV;
+	}
 
 	/* Turn on device clock first and get source clock freq. */
 	ret = clock_control_on(clk_dev, (clock_control_subsys_t *)&config->clk_cfg);
@@ -499,7 +505,11 @@ static int uart_npcx_init(const struct device *dev)
 	}
 
 	/* Configure pin-mux for uart device */
-	npcx_pinctrl_mux_configure(config->alts_list, config->alts_size, 1);
+	ret = pinctrl_apply_state(config->pcfg, PINCTRL_STATE_DEFAULT);
+	if (ret < 0) {
+		LOG_ERR("UART pinctrl setup failed (%d)", ret);
+		return ret;
+	}
 
 	return 0;
 }
@@ -524,14 +534,13 @@ static int uart_npcx_init(const struct device *dev)
 #define NPCX_UART_INIT(i)                                                                       \
 	NPCX_UART_IRQ_CONFIG_FUNC_DECL(i);                                                      \
 												\
-	static const struct npcx_alt uart_alts##i[] = NPCX_DT_ALT_ITEMS_LIST(i);                \
+	PINCTRL_DT_INST_DEFINE(i);                                                              \
 												\
 	static const struct uart_npcx_config uart_npcx_cfg_##i = {                              \
 		.inst = (struct uart_reg *)DT_INST_REG_ADDR(i),                                 \
 		.clk_cfg = NPCX_DT_CLK_CFG_ITEM(i),                                             \
 		.uart_rx_wui = NPCX_DT_WUI_ITEM_BY_NAME(0, uart_rx),                            \
-		.alts_size = ARRAY_SIZE(uart_alts##i),                                          \
-		.alts_list = uart_alts##i,                                                      \
+		.pcfg = PINCTRL_DT_INST_DEV_CONFIG_GET(i),                                      \
 		NPCX_UART_IRQ_CONFIG_FUNC_INIT(i)                                               \
 	};                                                                                      \
 												\

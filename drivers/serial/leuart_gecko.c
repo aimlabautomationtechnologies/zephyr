@@ -7,7 +7,8 @@
 #define DT_DRV_COMPAT silabs_gecko_leuart
 
 #include <errno.h>
-#include <drivers/uart.h>
+#include <zephyr/drivers/uart.h>
+#include <zephyr/irq.h>
 #include <em_leuart.h>
 #include <em_gpio.h>
 #include <em_cmu.h>

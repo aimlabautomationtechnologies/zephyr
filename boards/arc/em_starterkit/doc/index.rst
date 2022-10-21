@@ -12,8 +12,7 @@ for the ARC EM Family of processors. The EM Family includes the EM4, EM6,
 EM5D, EM7D, EM9D, and EM11D cores. The Zephyr RTOS can be used with the
 EM Starter Kit.
 
-.. image:: ./em_starterkit.jpg
-   :width: 442px
+.. image:: em_starterkit.jpg
    :align: center
    :alt: DesignWare(R) ARC(R) EM Starter Kit (synopsys.com)
 
@@ -138,7 +137,7 @@ pieces of hardware are required.
   standalone, the universal switching power adaptor (110-240V AC to 5V DC),
   provided in the package, can be used to power the board.
 
-* :ref:`The Zephyr SDK <zephyr_sdk>`
+* :ref:`The Zephyr SDK <toolchain_zephyr_sdk>`
 
 * Terminal emulator software for use with the USB-UART. Suggestion:
   `Putty Website`_.
@@ -311,8 +310,8 @@ Release Notes
 
 The following is a list of TODO items:
 
-* :jira:`GH-2647`: Zephyr needs i-cache API (all targets)
-* :jira:`GH-2230`: Zephyr ARC port doesn't yet support nested regular interrupts.
+* ``GH-2647``: Zephyr needs i-cache API (all targets)
+* ``GH-2230``: Zephyr ARC port doesn't yet support nested regular interrupts.
 * pinmux driver: Possibly it can be written to configure PMods too.
 
 References

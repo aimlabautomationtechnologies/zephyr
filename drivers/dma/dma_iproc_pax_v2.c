@@ -6,25 +6,24 @@
 
 #define DT_DRV_COMPAT brcm_iproc_pax_dma_v2
 
-#include <arch/cpu.h>
-#include <cache.h>
+#include <zephyr/arch/cpu.h>
+#include <zephyr/cache.h>
 #include <errno.h>
-#include <init.h>
-#include <kernel.h>
-#include <linker/sections.h>
+#include <zephyr/init.h>
+#include <zephyr/kernel.h>
+#include <zephyr/linker/sections.h>
 #include <soc.h>
 #include <string.h>
-#include <toolchain.h>
+#include <zephyr/toolchain.h>
 #include <zephyr/types.h>
-#include <drivers/dma.h>
-#include <drivers/pcie/endpoint/pcie_ep.h>
+#include <zephyr/drivers/dma.h>
+#include <zephyr/drivers/pcie/endpoint/pcie_ep.h>
 #include "dma_iproc_pax_v2.h"
 
 #define LOG_LEVEL CONFIG_DMA_LOG_LEVEL
-#include <logging/log.h>
+#include <zephyr/logging/log.h>
+#include <zephyr/irq.h>
 LOG_MODULE_REGISTER(dma_iproc_pax_v2);
-
-#define PAX_DMA_DEV_NAME(dev)	((dev)->name)
 
 /* Driver runtime data for PAX DMA and RM */
 static struct dma_iproc_pax_data pax_dma_data;
@@ -65,7 +64,7 @@ static inline void rm_write_header_desc(void *desc, uint32_t toggle,
 	r->opq = opq;
 	r->bdf = 0x0;
 	r->res1 = 0x0;
-	/* DMA descriptor count init vlaue */
+	/* DMA descriptor count init value */
 	r->bdcount = bdcount;
 	r->prot = 0x0;
 	r->res2 = 0x0;
@@ -105,7 +104,7 @@ static inline void rm_write_pcie_desc(void *desc,
 }
 
 /**
- * @brief Populate src/destionation descriptor
+ * @brief Populate src/destination descriptor
  */
 static inline void rm_write_src_dst_desc(void *desc_ptr,
 				bool is_mega,
@@ -415,10 +414,11 @@ static inline void set_ring_active(struct dma_iproc_pax_data *pd,
 	uint32_t val;
 
 	val = sys_read32(RM_RING_REG(pd, idx, RING_CONTROL));
-	if (active)
+	if (active) {
 		val |= RING_CONTROL_ACTIVE;
-	else
+	} else {
 		val &= ~RING_CONTROL_ACTIVE;
+	}
 	sys_write32(val, RM_RING_REG(pd, idx, RING_CONTROL));
 }
 
@@ -445,9 +445,9 @@ static int init_ring(struct dma_iproc_pax_data *pd, enum ring_idx idx)
 	sys_write32(RING_CONTROL_FLUSH, RM_RING_REG(pd, idx,
 						    RING_CONTROL));
 	do {
-		if (sys_read32(RM_RING_REG(pd, idx, RING_FLUSH_DONE)) &
-		    RING_FLUSH_DONE_MASK)
+		if (sys_read32(RM_RING_REG(pd, idx, RING_FLUSH_DONE)) & RING_FLUSH_DONE_MASK) {
 			break;
+		}
 		k_busy_wait(1);
 	} while (--timeout);
 
@@ -639,10 +639,9 @@ static int peek_ring_cmpl(const struct device *dev,
 	return process_cmpl_event(dev, idx, pl_len);
 }
 #else
-static void rm_isr(void *arg)
+static void rm_isr(const struct device *dev)
 {
 	uint32_t status, err_stat, idx;
-	const struct device *dev = arg;
 	struct dma_iproc_pax_data *pd = dev->data;
 
 	err_stat =
@@ -756,10 +755,9 @@ static int dma_iproc_pax_init(const struct device *dev)
 		    0);
 	irq_enable(DT_INST_IRQN(0));
 #else
-	LOG_INF("%s PAX DMA rings in poll mode!\n", PAX_DMA_DEV_NAME(dev));
+	LOG_INF("%s PAX DMA rings in poll mode!\n", dev->name);
 #endif
-	LOG_INF("%s RM setup %d rings\n", PAX_DMA_DEV_NAME(dev),
-		pd->used_rings);
+	LOG_INF("%s RM setup %d rings\n", dev->name, pd->used_rings);
 
 	return 0;
 }
@@ -972,8 +970,9 @@ static int dma_iproc_pax_process_dma_blocks(const struct device *dev,
 						config->channel_direction,
 						block_config,
 						&non_hdr_bd_count);
-		if (ret)
+		if (ret) {
 			goto err;
+		}
 		block_config = block_config->next_block;
 	}
 

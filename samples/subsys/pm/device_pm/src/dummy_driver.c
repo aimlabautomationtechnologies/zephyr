@@ -4,9 +4,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <pm/device.h>
-#include <pm/device_runtime.h>
-#include <sys/printk.h>
+#include <zephyr/pm/device.h>
+#include <zephyr/pm/device_runtime.h>
+#include <zephyr/sys/printk.h>
 #include "dummy_parent.h"
 #include "dummy_driver.h"
 
@@ -67,7 +67,7 @@ static int dummy_close(const struct device *dev)
 
 	ret = pm_device_runtime_put(dev);
 	if (ret == 1) {
-		printk("Async suspend request ququed\n");
+		printk("Async suspend request queued\n");
 	}
 
 	/* Parent can be suspended */

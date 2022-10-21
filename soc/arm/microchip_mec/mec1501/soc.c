@@ -4,12 +4,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <device.h>
-#include <init.h>
+#include <zephyr/device.h>
+#include <zephyr/init.h>
 #include <soc.h>
-#include <kernel.h>
-#include <arch/cpu.h>
-#include <arch/arm/aarch32/cortex_m/cmsis.h>
+#include <zephyr/kernel.h>
+#include <zephyr/arch/cpu.h>
+#include <zephyr/arch/arm/aarch32/cortex_m/cmsis.h>
 
 /* MEC devices IDs with special PLL handling */
 #define MCHP_GCFG_DID_DEV_ID_MEC150x    0x0020U
@@ -147,7 +147,7 @@ static int soc_init(const struct device *dev)
 	 * On HW reset PCR Processor Clock Divider = 4 for 48/4 = 12 MHz.
 	 * Set clock divider = 1 for maximum speed.
 	 * NOTE1: This clock divider affects all Cortex-M4 core clocks.
-	 * If you change it you must repogram SYSTICK to maintain the
+	 * If you change it you must reprogram SYSTICK to maintain the
 	 * same absolute time interval.
 	 */
 	PCR_REGS->PROC_CLK_CTRL = CONFIG_SOC_MEC1501_PROC_CLK_DIV;

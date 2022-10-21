@@ -12,11 +12,11 @@ USBC Sink device.
 
 After the USBC Sink device is powered, an LED begins to blink and
 when the USBC Sink device is plugged into a Power Delivery charger, it
-negotiates with the charger to provide 5V@100mA and displays all
+negotiates with the charger to provide 5V at 100mA and displays all
 Power Delivery Objects (PDOs) provided by the charger.
 
 Please note that this example does not implement any of the features and
-requiresments outlined in the USBC Specification needed to create a robust
+requirements outlined in the USBC Specification needed to create a robust
 USBC Sink device. It is meant for demonstration purposes only.
 
 .. _sink-sample-requirements:

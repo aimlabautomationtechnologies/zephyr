@@ -5,16 +5,16 @@
  */
 
 #include <zephyr/types.h>
-#include <sys/byteorder.h>
-#include <ztest.h>
+#include <zephyr/sys/byteorder.h>
+#include <zephyr/ztest.h>
 #include "kconfig.h"
 
 #define ULL_LLCP_UNITTEST
 
-#include <bluetooth/hci.h>
-#include <sys/byteorder.h>
-#include <sys/slist.h>
-#include <sys/util.h>
+#include <zephyr/bluetooth/hci.h>
+#include <zephyr/sys/byteorder.h>
+#include <zephyr/sys/slist.h>
+#include <zephyr/sys/util.h>
 #include "hal/ccm.h"
 
 #include "util/util.h"
@@ -29,7 +29,13 @@
 #include "lll.h"
 #include "lll_df_types.h"
 #include "lll_conn.h"
+#include "lll_conn_iso.h"
+
 #include "ull_tx_queue.h"
+
+#include "isoal.h"
+#include "ull_iso_types.h"
+#include "ull_conn_iso_types.h"
 #include "ull_conn_types.h"
 
 #include "ull_llcp.h"
@@ -133,7 +139,7 @@ void test_hci_feat_exchange_central_loc(void)
 
 		ll_conn_release(conn_from_pool);
 	}
-	zassert_equal(ctx_buffers_free(), CONFIG_BT_CTLR_LLCP_PROC_CTX_BUF_NUM,
+	zassert_equal(ctx_buffers_free(), test_ctx_buffers_cnt(),
 				  "Free CTX buffers %d", ctx_buffers_free());
 }
 
@@ -155,13 +161,15 @@ void test_hci_feat_exchange_wrong_handle(void)
 		ctx = llcp_create_local_procedure(PROC_FEATURE_EXCHANGE);
 		ctx_counter++;
 	} while (ctx != NULL);
-	zassert_equal(ctx_counter, CONFIG_BT_CTLR_LLCP_PROC_CTX_BUF_NUM + 1,
+
+	zassert_equal(ctx_counter, CONFIG_BT_CTLR_LLCP_LOCAL_PROC_CTX_BUF_NUM + 1,
 				   "Error in setup of test\n");
 
 	err = ll_feature_req_send(conn_handle);
 	zassert_equal(err, BT_HCI_ERR_CMD_DISALLOWED, "Wrong reply for wrong handle\n");
 
-	zassert_equal(ctx_buffers_free(), 0, "Free CTX buffers %d", ctx_buffers_free());
+	zassert_equal(ctx_buffers_free(), test_ctx_buffers_cnt() - (ctx_counter - 1),
+		      "Free CTX buffers %d", ctx_buffers_free());
 }
 
 void test_hci_main(void)

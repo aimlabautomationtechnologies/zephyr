@@ -6,10 +6,13 @@
 
 #define DT_DRV_COMPAT nxp_os_timer
 
-#include <device.h>
-#include <drivers/timer/system_timer.h>
-#include <sys_clock.h>
-#include <spinlock.h>
+#include <limits.h>
+
+#include <zephyr/device.h>
+#include <zephyr/drivers/timer/system_timer.h>
+#include <zephyr/irq.h>
+#include <zephyr/sys_clock.h>
+#include <zephyr/spinlock.h>
 #include "fsl_ostimer.h"
 #include "fsl_power.h"
 
@@ -25,7 +28,7 @@ static struct k_spinlock lock;
 static uint64_t last_count;
 static OSTIMER_Type *base;
 
-void mcux_lpc_ostick_isr(void *arg)
+void mcux_lpc_ostick_isr(const void *arg)
 {
 	ARG_UNUSED(arg);
 

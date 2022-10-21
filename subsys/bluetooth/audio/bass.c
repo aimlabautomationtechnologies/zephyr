@@ -7,22 +7,24 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <zephyr.h>
-#include <sys/byteorder.h>
+#include <zephyr/kernel.h>
+#include <zephyr/sys/byteorder.h>
+#include <zephyr/sys/util.h>
 
-#include <device.h>
-#include <init.h>
+#include <zephyr/device.h>
+#include <zephyr/init.h>
 
-#include <bluetooth/bluetooth.h>
-#include <bluetooth/conn.h>
-#include <bluetooth/iso.h>
-#include <bluetooth/gatt.h>
-#include <bluetooth/buf.h>
+#include <zephyr/bluetooth/bluetooth.h>
+#include <zephyr/bluetooth/conn.h>
+#include <zephyr/bluetooth/iso.h>
+#include <zephyr/bluetooth/gatt.h>
+#include <zephyr/bluetooth/buf.h>
 
 #define BT_DBG_ENABLED IS_ENABLED(CONFIG_BT_DEBUG_BASS)
 #define LOG_MODULE_NAME bt_bass
 #include "common/log.h"
 
+#include "audio_internal.h"
 #include "bass_internal.h"
 #include "../host/conn_internal.h"
 #include "../host/hci_core.h"
@@ -164,7 +166,7 @@ static void bt_debug_dump_recv_state(const struct bass_recv_state_internal *recv
 	for (int i = 0; i < state->num_subgroups; i++) {
 		const struct bt_bass_subgroup *subgroup = &state->subgroups[i];
 
-		BT_DBG("\tSubsgroup[%d]: BIS sync %u (requested %u), metadata_len %u, metadata: %s",
+		BT_DBG("\tSubgroup[%d]: BIS sync %u (requested %u), metadata_len %u, metadata: %s",
 		       i, subgroup->bis_sync, subgroup->requested_bis_sync,
 		       subgroup->metadata_len,
 		       bt_hex(subgroup->metadata, subgroup->metadata_len));
@@ -336,7 +338,7 @@ static struct bass_recv_state_internal *bass_lookup_pa_sync(struct bt_le_per_adv
 static struct bass_recv_state_internal *bass_lookup_addr(const bt_addr_le_t *addr)
 {
 	for (int i = 0; i < ARRAY_SIZE(bass_inst.recv_states); i++) {
-		if (bt_addr_le_cmp(&bass_inst.recv_states[i].state.addr, addr) == 0) {
+		if (bt_addr_le_eq(&bass_inst.recv_states[i].state.addr, addr)) {
 			return &bass_inst.recv_states[i];
 		}
 	}
@@ -440,7 +442,7 @@ static void biginfo_recv(struct bt_le_per_adv_sync *sync,
 {
 	struct bass_recv_state_internal *state = bass_lookup_pa_sync(sync);
 
-	if (state != NULL || state->biginfo_received) {
+	if (state == NULL || state->biginfo_received) {
 		return;
 	}
 
@@ -1001,7 +1003,7 @@ static int bass_mod_src(struct bt_conn *conn, struct net_buf_simple *buf)
 
 	state_changed |= old_pa_sync_state != state->pa_sync_state;
 
-	BT_DBG("Index %u: Source modifed: ID 0x%02x",
+	BT_DBG("Index %u: Source modified: ID 0x%02x",
 	       internal_state->index, state->src_id);
 	bt_debug_dump_recv_state(internal_state);
 
@@ -1223,7 +1225,7 @@ static ssize_t read_recv_state(struct bt_conn *conn,
 			       const struct bt_gatt_attr *attr, void *buf,
 			       uint16_t len, uint16_t offset)
 {
-	uint8_t idx = (uint8_t)(uintptr_t)attr->user_data;
+	uint8_t idx = POINTER_TO_UINT(BT_AUDIO_CHRC_USER_DATA(attr));
 	struct bass_recv_state_internal *recv_state = &bass_inst.recv_states[idx];
 	struct bt_bass_recv_state *state = &recv_state->state;
 
@@ -1244,19 +1246,18 @@ static ssize_t read_recv_state(struct bt_conn *conn,
 }
 
 #define RECEIVE_STATE_CHARACTERISTIC(idx) \
-	BT_GATT_CHARACTERISTIC(BT_UUID_BASS_RECV_STATE, \
-		BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,\
-		BT_GATT_PERM_READ_ENCRYPT, \
-		read_recv_state, NULL, (void *)idx), \
-	BT_GATT_CCC(recv_state_cfg_changed, \
-		BT_GATT_PERM_READ | BT_GATT_PERM_WRITE_ENCRYPT)
+	BT_AUDIO_CHRC(BT_UUID_BASS_RECV_STATE, \
+		      BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,\
+		      BT_GATT_PERM_READ_ENCRYPT, \
+		      read_recv_state, NULL, UINT_TO_POINTER(idx)), \
+	BT_AUDIO_CCC(recv_state_cfg_changed)
 
 BT_GATT_SERVICE_DEFINE(bass_svc,
 	BT_GATT_PRIMARY_SERVICE(BT_UUID_BASS),
-	BT_GATT_CHARACTERISTIC(BT_UUID_BASS_CONTROL_POINT,
-		BT_GATT_CHRC_WRITE_WITHOUT_RESP | BT_GATT_CHRC_WRITE,
-		BT_GATT_PERM_WRITE_ENCRYPT,
-		NULL, write_control_point, NULL),
+	BT_AUDIO_CHRC(BT_UUID_BASS_CONTROL_POINT,
+		      BT_GATT_CHRC_WRITE_WITHOUT_RESP | BT_GATT_CHRC_WRITE,
+		      BT_GATT_PERM_WRITE_ENCRYPT,
+		      NULL, write_control_point, NULL),
 	RECEIVE_STATE_CHARACTERISTIC(0),
 #if CONFIG_BT_BASS_RECV_STATE_COUNT > 1
 	RECEIVE_STATE_CHARACTERISTIC(1),

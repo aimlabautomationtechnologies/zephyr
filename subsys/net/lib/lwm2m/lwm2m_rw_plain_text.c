@@ -59,7 +59,7 @@
 #define LOG_MODULE_NAME net_lwm2m_plain_text
 #define LOG_LEVEL CONFIG_LWM2M_LOG_LEVEL
 
-#include <logging/log.h>
+#include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(LOG_MODULE_NAME);
 
 #include <stdarg.h>
@@ -381,7 +381,7 @@ static int get_objlnk(struct lwm2m_input_context *in,
 	total_len = len;
 	value->obj_id = (uint16_t)tmp;
 
-	/* Skip ':' delimeter. */
+	/* Skip ':' delimiter. */
 	total_len++;
 	in->offset++;
 

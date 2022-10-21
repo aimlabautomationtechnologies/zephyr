@@ -4,15 +4,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <init.h>
-#include <sys/byteorder.h>
+#include <zephyr/init.h>
+#include <zephyr/sys/byteorder.h>
 
-#include <bluetooth/bluetooth.h>
-#include <bluetooth/hci.h>
-#include <drivers/bluetooth/hci_driver.h>
+#include <zephyr/bluetooth/bluetooth.h>
+#include <zephyr/bluetooth/hci.h>
+#include <zephyr/drivers/bluetooth/hci_driver.h>
 
-#include <device.h>
-#include <ipc/ipc_service.h>
+#include <zephyr/device.h>
+#include <zephyr/ipc/ipc_service.h>
 
 #define BT_DBG_ENABLED IS_ENABLED(CONFIG_BT_DEBUG_HCI_DRIVER)
 #define LOG_MODULE_NAME bt_hci_driver
@@ -78,15 +78,16 @@ static struct net_buf *bt_rpmsg_evt_recv(const uint8_t *data, size_t remaining)
 	}
 	BT_DBG("len %u", hdr.len);
 
-	buf = bt_buf_get_evt(hdr.evt, discardable, K_NO_WAIT);
-	if (!buf) {
-		if (discardable) {
-			BT_DBG("Discardable buffer pool full, ignoring event");
-		} else {
-			BT_ERR("No available event buffers!");
+	do {
+		buf = bt_buf_get_evt(hdr.evt, discardable, discardable ? K_NO_WAIT : K_SECONDS(10));
+		if (!buf) {
+			if (discardable) {
+				BT_DBG("Discardable buffer pool full, ignoring event");
+				return buf;
+			}
+			BT_WARN("Couldn't allocate a buffer after waiting 10 seconds.");
 		}
-		return buf;
-	}
+	} while (!buf);
 
 	net_buf_add_mem(buf, &hdr, sizeof(hdr));
 
@@ -282,7 +283,8 @@ static struct ipc_ept_cfg hci_ept_cfg = {
 static int bt_rpmsg_open(void)
 {
 	int err;
-	const struct device *hci_ipc_instance = DEVICE_DT_GET(DT_NODELABEL(ipc0));
+	const struct device *hci_ipc_instance =
+		DEVICE_DT_GET(DT_CHOSEN(zephyr_bt_hci_rpmsg_ipc));
 
 	BT_DBG("");
 

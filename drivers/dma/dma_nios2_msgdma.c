@@ -6,18 +6,19 @@
 
 #define DT_DRV_COMPAT altr_msgdma
 
-#include <device.h>
+#include <zephyr/device.h>
 #include <errno.h>
-#include <init.h>
+#include <zephyr/init.h>
 #include <string.h>
 #include <soc.h>
-#include <drivers/dma.h>
+#include <zephyr/drivers/dma.h>
 #include <altera_common.h>
 #include "altera_msgdma_csr_regs.h"
 #include "altera_msgdma_descriptor_regs.h"
 #include "altera_msgdma.h"
 
-#include <logging/log.h>
+#include <zephyr/logging/log.h>
+#include <zephyr/irq.h>
 LOG_MODULE_REGISTER(dma_nios2, CONFIG_DMA_LOG_LEVEL);
 
 /* Device configuration parameters */
@@ -30,8 +31,6 @@ struct nios2_msgdma_dev_data {
 	void *user_data;
 	dma_callback_t dma_callback;
 };
-
-#define DEV_NAME(dev) ((dev)->name)
 
 static void nios2_msgdma_isr(void *arg)
 {
@@ -155,7 +154,7 @@ static int nios2_msgdma_transfer_start(const struct device *dev,
 	struct nios2_msgdma_dev_data *cfg = (struct nios2_msgdma_dev_data *)dev->data;
 	int status;
 
-	/* Nios-II mSGDMA supports only one channel per DMA core */
+	/* Nios-II MSGDMA supports only one channel per DMA core */
 	if (channel != 0U) {
 		LOG_ERR("Invalid channel number");
 		return -EINVAL;

@@ -5,9 +5,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <toolchain.h>
-#include <linker/sections.h>
-#include <arch/cpu.h>
+#include <zephyr/toolchain.h>
+#include <zephyr/linker/sections.h>
+#include <zephyr/arch/cpu.h>
+#include <offsets.h>
+#include "asm_macros.inc"
 
 /* exports */
 GTEXT(__initialize)
@@ -52,20 +54,20 @@ boot_first_core:
 	/*
 	 * Enable floating-point.
 	 */
-	li  t0, MSTATUS_FS_INIT
-	csrrs x0, mstatus, t0
+	li t0, MSTATUS_FS_INIT
+	csrs mstatus, t0
 
 	/*
 	 * Floating-point rounding mode set to IEEE-754 default, and clear
 	 * all exception flags.
 	 */
-	fscsr x0, x0
+	fscsr zero
 #endif
 
 #ifdef CONFIG_INIT_STACKS
 	/* Pre-populate all bytes in z_interrupt_stacks with 0xAA */
 	la t0, z_interrupt_stacks
-	li t1, CONFIG_ISR_STACK_SIZE
+	li t1, __z_interrupt_stack_SIZEOF
 	add t1, t1, t0
 
 	/* Populate z_interrupt_stacks with 0xaaaaaaaa */
@@ -78,13 +80,11 @@ aa_loop:
 
 	/*
 	 * Initially, setup stack pointer to
-	 * z_interrupt_stacks + CONFIG_ISR_STACK_SIZE
+	 * z_interrupt_stacks + __z_interrupt_stack_SIZEOF
 	 */
 	la sp, z_interrupt_stacks
-	li t0, CONFIG_ISR_STACK_SIZE
+	li t0, __z_interrupt_stack_SIZEOF
 	add sp, sp, t0
-
-	csrw mscratch, sp
 
 #ifdef CONFIG_WDOG_INIT
 	call _WdogInit
@@ -98,13 +98,13 @@ aa_loop:
 
 boot_secondary_core:
 	la t0, riscv_cpu_wake_flag
-	RV_OP_LOADREG t0, 0x00(t0)
+	lr t0, 0(t0)
 	bne a0, t0, boot_secondary_core
 
 	/* Set up stack */
 	la t0, riscv_cpu_sp
-	RV_OP_LOADREG sp, 0x00(t0)
+	lr sp, 0(t0)
 
 	la t0, riscv_cpu_wake_flag
-	RV_OP_STOREREG x0, 0x00(t0)
+	sr zero, 0(t0)
 	j z_riscv_secondary_cpu_init

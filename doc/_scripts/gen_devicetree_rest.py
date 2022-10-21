@@ -204,6 +204,8 @@ def load_bindings(dts_roots):
 
     binding_files = []
     for dts_root in dts_roots:
+        binding_files.extend(glob.glob(f'{dts_root}/dts/bindings/**/*.yml',
+                                       recursive=True))
         binding_files.extend(glob.glob(f'{dts_root}/dts/bindings/**/*.yaml',
                                        recursive=True))
 
@@ -395,7 +397,7 @@ def write_orphans(bindings, base_binding, vnd_lookup, out_dir):
     # Next, write the per-binding pages. These contain the
     # per-compatible targets for compatibles not in 'dup_compats'.
     # We'll finish up by writing per-compatible "disambiguation" pages
-    # for copmatibles in 'dup_compats'.
+    # for compatibles in 'dup_compats'.
 
     # Names of properties in base.yaml.
     base_names = set(base_binding.prop2specs.keys())
@@ -677,7 +679,7 @@ def print_property_table(prop_specs, string_io, deprecated=False):
 
 def setup_compatibles_dir(compatibles, compatibles_dir):
     # Make a set of all the Path objects we will be creating for
-    # out_dir / copmatibles / {compatible_path}.rst. Delete all the ones that
+    # out_dir / compatibles / {compatible_path}.rst. Delete all the ones that
     # shouldn't be there. Make sure the compatibles output directory
     # exists.
 
@@ -794,9 +796,9 @@ def binding_filename(binding):
     if idx == -1:
         raise ValueError(f'binding path has no {dts_bindings}: {binding.path}')
 
-    # Cut past dts/bindings, strip off the .yaml, and replace with
-    # .rst.
-    return as_posix[idx + len(dts_bindings):-4] + 'rst'
+    # Cut past dts/bindings, strip off the extension (.yaml or .yml), and
+    # replace with .rst.
+    return os.path.splitext(as_posix[idx + len(dts_bindings):])[0] + '.rst'
 
 def binding_ref_target(binding):
     # Return the sphinx ':ref:' target name for a binding.

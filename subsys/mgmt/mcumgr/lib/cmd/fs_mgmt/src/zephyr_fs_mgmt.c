@@ -4,8 +4,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <fs/fs.h>
+#include <zephyr/fs/fs.h>
+#include <errno.h>
 #include <mgmt/mgmt.h>
+#include <zephyr/mgmt/mcumgr/buf.h>
 #include <fs_mgmt/fs_mgmt_impl.h>
 
 int
@@ -15,7 +17,12 @@ fs_mgmt_impl_filelen(const char *path, size_t *out_len)
 	int rc;
 
 	rc = fs_stat(path, &dirent);
-	if (rc != 0) {
+
+	if (rc == -EINVAL) {
+		return MGMT_ERR_EINVAL;
+	} else if (rc == -ENOENT) {
+		return MGMT_ERR_ENOENT;
+	} else if (rc != 0) {
 		return MGMT_ERR_EUNKNOWN;
 	}
 
@@ -57,37 +64,8 @@ fs_mgmt_impl_read(const char *path, size_t offset, size_t len,
 done:
 	fs_close(&file);
 
-	if (rc != 0) {
+	if (rc < 0) {
 		return MGMT_ERR_EUNKNOWN;
-	} else {
-		return 0;
-	}
-}
-
-static int
-zephyr_fs_mgmt_truncate(const char *path)
-{
-	size_t len;
-	int rc;
-
-	/* Attempt to get the length of the file at the specified path.  This is a
-	 * quick way to determine if there is already a file there.
-	 */
-	rc = fs_mgmt_impl_filelen(path, &len);
-	if (rc == 0) {
-		/* There is already a file with the specified path.  Unlink it to
-		 * simulate a truncate operation.
-		 *
-		 * XXX: This isn't perfect - if the file is currently open, the unlink
-		 * operation won't actually delete the file.  Consequently, the file
-		 * will get partially overwritten rather than truncated.  The NFFS port
-		 * doesn't support the truncate operation, so this is an imperfect
-		 * workaround.
-		 */
-		rc = fs_unlink(path);
-		if (rc != 0) {
-			return MGMT_ERR_EUNKNOWN;
-		}
 	}
 
 	return 0;
@@ -99,15 +77,10 @@ fs_mgmt_impl_write(const char *path, size_t offset, const void *data,
 {
 	struct fs_file_t file;
 	int rc;
+	size_t file_size = 0;
 
-	/* Truncate the file before writing the first chunk.  This is done to
-	 * properly handle an overwrite of an existing file
-	 */
 	if (offset == 0) {
-		rc = zephyr_fs_mgmt_truncate(path);
-		if (rc != 0) {
-			return rc;
-		}
+		rc = fs_mgmt_impl_filelen(path, &file_size);
 	}
 
 	fs_file_t_init(&file);
@@ -116,9 +89,35 @@ fs_mgmt_impl_write(const char *path, size_t offset, const void *data,
 		return MGMT_ERR_EUNKNOWN;
 	}
 
-	rc = fs_seek(&file, offset, FS_SEEK_SET);
-	if (rc != 0) {
-		goto done;
+	if (offset == 0 && file_size > 0) {
+		/* Offset is 0 and existing file exists with data, attempt to truncate the file
+		 * size to 0
+		 */
+		rc = fs_truncate(&file, 0);
+
+		if (rc == -ENOTSUP) {
+			/* Truncation not supported by filesystem, therefore close file, delete
+			 * it then re-open it
+			 */
+			fs_close(&file);
+
+			rc = fs_unlink(path);
+			if (rc < 0 && rc != -ENOENT) {
+				return rc;
+			}
+
+			rc = fs_open(&file, path, FS_O_CREATE | FS_O_WRITE);
+		}
+
+		if (rc < 0) {
+			/* Failed to truncate file */
+			return MGMT_ERR_EUNKNOWN;
+		}
+	} else if (offset > 0) {
+		rc = fs_seek(&file, offset, FS_SEEK_SET);
+		if (rc != 0) {
+			goto done;
+		}
 	}
 
 	rc = fs_write(&file, data, len);
@@ -126,14 +125,12 @@ fs_mgmt_impl_write(const char *path, size_t offset, const void *data,
 		goto done;
 	}
 
-	rc = 0;
-
 done:
 	fs_close(&file);
 
-	if (rc != 0) {
+	if (rc < 0) {
 		return MGMT_ERR_EUNKNOWN;
-	} else {
-		return 0;
 	}
+
+	return 0;
 }

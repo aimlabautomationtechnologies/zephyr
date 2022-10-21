@@ -12,10 +12,10 @@ extern "C" {
 #endif
 
 #include <zephyr/types.h>
-#include <sys/slist.h>
+#include <zephyr/sys/slist.h>
 #include <sys/types.h>
 
-#include <bluetooth/l2cap.h>
+#include <zephyr/bluetooth/l2cap.h>
 
 struct bt_gatt_ots_l2cap_tx {
 	uint8_t *data;
@@ -49,7 +49,7 @@ int bt_gatt_ots_l2cap_unregister(struct bt_gatt_ots_l2cap *l2cap_ctx);
 /** @brief Connect OTS L2CAP channel
  *
  *  This function is for the OTS client to make an L2CAP connection to
- *  the OTS server.  One of the availalable registered L2CAP contexts
+ *  the OTS server.  One of the available registered L2CAP contexts
  *  will be used for the connection.
  *
  * @param[in]  conn       Connection pointer

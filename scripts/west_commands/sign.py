@@ -22,7 +22,7 @@ from zcmake import CMakeCache
 from zephyr_ext_common import Forceable, ZEPHYR_SCRIPTS
 
 # This is needed to load edt.pickle files.
-sys.path.append(str(ZEPHYR_SCRIPTS / 'dts' / 'python-devicetree' / 'src'))
+sys.path.insert(0, str(ZEPHYR_SCRIPTS / 'dts' / 'python-devicetree' / 'src'))
 
 SIGN_DESCRIPTION = '''\
 This command automates some of the drudgery of creating signed Zephyr
@@ -464,9 +464,15 @@ class RimageSigner(Signer):
         else:
             extra_ri_args = ['-i', '3', '-e']
 
+        sign_base = [tool_path]
+
+        # Sub-command arg '-q' takes precedence over west '-v'
+        if not args.quiet and args.verbose:
+            sign_base += ['-v'] * args.verbose
+
         components = [ ] if (target in ('imx8', 'imx8m')) else [ bootloader ]
         components += [ kernel ]
-        sign_base = ([tool_path] + args.tool_args +
+        sign_base += (args.tool_args +
                      ['-o', out_bin] + conf_path_cmd + extra_ri_args +
                      components)
 

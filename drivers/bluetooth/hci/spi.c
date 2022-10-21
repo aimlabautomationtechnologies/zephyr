@@ -8,14 +8,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <drivers/gpio.h>
-#include <init.h>
-#include <drivers/spi.h>
-#include <sys/byteorder.h>
-#include <sys/util.h>
+#include <zephyr/drivers/gpio.h>
+#include <zephyr/init.h>
+#include <zephyr/drivers/spi.h>
+#include <zephyr/sys/byteorder.h>
+#include <zephyr/sys/util.h>
 
-#include <bluetooth/hci.h>
-#include <drivers/bluetooth/hci_driver.h>
+#include <zephyr/bluetooth/hci.h>
+#include <zephyr/drivers/bluetooth/hci_driver.h>
 
 #define BT_DBG_ENABLED IS_ENABLED(CONFIG_BT_DEBUG_HCI_DRIVER)
 #define LOG_MODULE_NAME bt_driver
@@ -72,7 +72,7 @@ static K_KERNEL_STACK_DEFINE(spi_rx_stack, 512);
 static struct k_thread spi_rx_thread_data;
 
 #if defined(CONFIG_BT_DEBUG_HCI_DRIVER)
-#include <sys/printk.h>
+#include <zephyr/sys/printk.h>
 static inline void spi_dump_message(const uint8_t *pre, uint8_t *buf,
 				    uint8_t size)
 {
@@ -116,8 +116,17 @@ struct bluenrg_aci_cmd_ll_param {
 static int bt_spi_send_aci_config_data_controller_mode(void);
 #endif /* CONFIG_BT_BLUENRG_ACI */
 
+#if defined(CONFIG_BT_SPI_BLUENRG)
+/* In case of BlueNRG-MS, it is necessary to prevent SPI driver to release CS,
+ * and instead, let current driver manage CS release. see kick_cs()/release_cs()
+ * So, add SPI_HOLD_ON_CS to operation field.
+ */
+static const struct spi_dt_spec bus = SPI_DT_SPEC_INST_GET(
+	0, SPI_OP_MODE_MASTER | SPI_TRANSFER_MSB | SPI_WORD_SET(8) | SPI_HOLD_ON_CS, 0);
+#else
 static const struct spi_dt_spec bus = SPI_DT_SPEC_INST_GET(
 	0, SPI_OP_MODE_MASTER | SPI_TRANSFER_MSB | SPI_WORD_SET(8), 0);
+#endif
 
 static struct spi_buf spi_tx_buf;
 static struct spi_buf spi_rx_buf;
@@ -159,8 +168,10 @@ static void bt_spi_isr(const struct device *unused1,
 	k_sem_give(&sem_request);
 }
 
-static void bt_spi_handle_vendor_evt(uint8_t *rxmsg)
+static bool bt_spi_handle_vendor_evt(uint8_t *rxmsg)
 {
+	bool handled = false;
+
 	switch (bt_spi_get_evt(rxmsg)) {
 	case EVT_BLUE_INITIALIZED:
 		k_sem_give(&sem_initialised);
@@ -168,9 +179,11 @@ static void bt_spi_handle_vendor_evt(uint8_t *rxmsg)
 		/* force BlueNRG to be on controller mode */
 		bt_spi_send_aci_config_data_controller_mode();
 #endif
+		handled = true;
 	default:
 		break;
 	}
+	return handled;
 }
 
 #if defined(CONFIG_BT_SPI_BLUENRG)
@@ -190,13 +203,13 @@ static int configure_cs(void)
 
 static void kick_cs(void)
 {
-	gpio_pin_set_dt(&bus.config.cs->gpio, 1);
 	gpio_pin_set_dt(&bus.config.cs->gpio, 0);
+	gpio_pin_set_dt(&bus.config.cs->gpio, 1);
 }
 
 static void release_cs(void)
 {
-	gpio_pin_set_dt(&bus.config.cs->gpio, 1);
+	gpio_pin_set_dt(&bus.config.cs->gpio, 0);
 }
 
 static bool irq_pin_high(void)
@@ -319,9 +332,12 @@ static void bt_spi_rx_thread(void)
 			case HCI_EVT:
 				switch (rxmsg[EVT_HEADER_EVENT]) {
 				case BT_HCI_EVT_VENDOR:
-					/* Vendor events are currently unsupported */
-					bt_spi_handle_vendor_evt(rxmsg);
-					continue;
+					/* Run event through interface handler */
+					if (bt_spi_handle_vendor_evt(rxmsg)) {
+						continue;
+					};
+					/* Event has not yet been handled */
+					__fallthrough;
 				default:
 					if (rxmsg[1] == BT_HCI_EVT_LE_META_EVENT &&
 					    (rxmsg[3] == BT_HCI_EVT_LE_ADVERTISING_REPORT)) {
@@ -420,9 +436,6 @@ static int bt_spi_send(struct net_buf *buf)
 	} while ((rxmsg[STATUS_HEADER_READY] != READY_NOW ||
 		  (rxmsg[1] | rxmsg[2] | rxmsg[3] | rxmsg[4]) == 0U) && !ret);
 
-
-	k_sem_give(&sem_busy);
-
 	if (!ret) {
 		/* Transmit the message */
 		do {
@@ -432,6 +445,8 @@ static int bt_spi_send(struct net_buf *buf)
 	}
 
 	release_cs();
+
+	k_sem_give(&sem_busy);
 
 	if (ret) {
 		BT_ERR("Error %d", ret);
@@ -482,6 +497,7 @@ static int bt_spi_open(void)
 			0, K_NO_WAIT);
 
 	/* Take BLE out of reset */
+	k_sleep(K_MSEC(DT_INST_PROP_OR(0, reset_assert_duration_ms, 0)));
 	gpio_pin_set_dt(&rst_gpio, 0);
 
 	/* Device will let us know when it's ready */
@@ -491,7 +507,7 @@ static int bt_spi_open(void)
 }
 
 static const struct bt_hci_driver drv = {
-	.name		= DT_INST_LABEL(0),
+	.name		= DEVICE_DT_NAME(DT_DRV_INST(0)),
 	.bus		= BT_HCI_DRIVER_BUS_SPI,
 #if defined(CONFIG_BT_BLUENRG_ACI)
 	.quirks		= BT_QUIRK_NO_RESET,

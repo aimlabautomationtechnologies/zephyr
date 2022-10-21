@@ -4,8 +4,8 @@
 
 # Zephyr Kernel CMake module.
 #
-# This is the main Zephyr Kernel CMake module which is resposible for creation
-# of Zephyr libraries and the Zephyr executeable.
+# This is the main Zephyr Kernel CMake module which is responsible for creation
+# of Zephyr libraries and the Zephyr executable.
 #
 # This CMake module creates 'project(Zephyr-Kernel)'
 #
@@ -21,6 +21,8 @@
 #        source files that must be included when building Zephyr
 
 include_guard(GLOBAL)
+
+find_package(TargetTools)
 
 # As this module is not intended for direct loading, but should be loaded through
 # find_package(Zephyr) then it won't be loading any Zephyr CMake modules by itself.
@@ -125,7 +127,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE CACHE BOOL
 project(Zephyr-Kernel VERSION ${PROJECT_VERSION})
 
 # Add .S file extension suffix into CMAKE_ASM_SOURCE_FILE_EXTENSIONS,
-# because clang from OneApi can't recongnize them as asm files on
+# because clang from OneApi can't recognize them as asm files on
 # windows now.
 list(APPEND CMAKE_ASM_SOURCE_FILE_EXTENSIONS "S")
 enable_language(C CXX ASM)
@@ -162,6 +164,7 @@ set(KERNEL_EXE_NAME   ${KERNEL_NAME}.exe)
 set(KERNEL_STAT_NAME  ${KERNEL_NAME}.stat)
 set(KERNEL_STRIP_NAME ${KERNEL_NAME}.strip)
 set(KERNEL_META_NAME  ${KERNEL_NAME}.meta)
+set(KERNEL_SYMBOLS_NAME    ${KERNEL_NAME}.symbols)
 
 include(${BOARD_DIR}/board.cmake OPTIONAL)
 

@@ -10,7 +10,7 @@ find_program(
   NAMES ${ARMFVP_BIN_NAME}
   )
 
-if ((NOT "${ARMFVP}" STREQUAL "ARMFVP-NOTFOUND") AND (DEFINED ARMFVP_MIN_VERSION))
+if(ARMFVP AND (DEFINED ARMFVP_MIN_VERSION))
   execute_process(
     COMMAND ${ARMFVP} --version
     OUTPUT_VARIABLE out
@@ -19,12 +19,22 @@ if ((NOT "${ARMFVP}" STREQUAL "ARMFVP-NOTFOUND") AND (DEFINED ARMFVP_MIN_VERSION
   string(REPLACE "\n" "" out ${out})
   string(REGEX MATCH "[0-9]+\.[0-9]+\.[0-9]+" armfvp_version ${out})
   if(${armfvp_version} VERSION_LESS ${ARMFVP_MIN_VERSION})
-    message(WARNING "Found FVP version is \"${armfvp_version}\", "
+    set(armfvp_warning_message "Found FVP version is \"${armfvp_version}\", "
       "the minimum required by the current board is \"${ARMFVP_MIN_VERSION}\".")
+    message(WARNING "${armfvp_warning_message}")
+    set(ARMFVP
+      COMMAND ${CMAKE_COMMAND} -E echo ${armfvp_warning_message}
+      COMMAND ${ARMFVP}
+    )
   endif()
 endif()
 
-if(CONFIG_ARMV8_A_NS)
+if(CONFIG_BUILD_WITH_TFA)
+  set(ARMFVP_FLAGS ${ARMFVP_FLAGS}
+    -C bp.secureflashloader.fname=${APPLICATION_BINARY_DIR}/tfa${FVP_SECURE_FLASH_FILE}
+    -C bp.flashloader0.fname=${APPLICATION_BINARY_DIR}/tfa${FVP_FLASH_FILE}
+    )
+elseif(CONFIG_ARMV8_A_NS)
   foreach(filetype BL1 FIP)
     if ((NOT DEFINED ARMFVP_${filetype}_FILE) AND (EXISTS "$ENV{ARMFVP_${filetype}_FILE}"))
       set(ARMFVP_${filetype}_FILE "$ENV{ARMFVP_${filetype}_FILE}" CACHE FILEPATH
@@ -54,8 +64,8 @@ add_custom_target(run_armfvp
   COMMAND
   ${ARMFVP}
   ${ARMFVP_FLAGS}
-  DEPENDS ${ARMFVP} ${logical_target_for_zephyr_elf}
+  DEPENDS ${logical_target_for_zephyr_elf}
   WORKING_DIRECTORY ${APPLICATION_BINARY_DIR}
-  COMMENT "FVP: ${ARMFVP}"
+  COMMENT "${ARMFVP_BIN_NAME}: ${armfvp_version}"
   USES_TERMINAL
   )

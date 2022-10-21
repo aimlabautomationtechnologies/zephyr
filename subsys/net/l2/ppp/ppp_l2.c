@@ -4,17 +4,17 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <logging/log.h>
+#include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(net_l2_ppp, CONFIG_NET_L2_PPP_LOG_LEVEL);
 
 #include <stdlib.h>
-#include <net/net_core.h>
-#include <net/net_l2.h>
-#include <net/net_if.h>
-#include <net/net_pkt.h>
-#include <net/net_mgmt.h>
+#include <zephyr/net/net_core.h>
+#include <zephyr/net/net_l2.h>
+#include <zephyr/net/net_if.h>
+#include <zephyr/net/net_pkt.h>
+#include <zephyr/net/net_mgmt.h>
 
-#include <net/ppp.h>
+#include <zephyr/net/ppp.h>
 
 #include "net_private.h"
 
@@ -282,7 +282,7 @@ static void carrier_on_off(struct k_work *work)
 
 	if (ppp_carrier_up) {
 		ppp_mgmt_raise_carrier_on_event(ctx->iface);
-		net_if_up(ctx->iface);
+		net_if_carrier_on(ctx->iface);
 	} else {
 		if (ppp_lcp) {
 			ppp_lcp->close(ctx, "Shutdown");
@@ -291,7 +291,7 @@ static void carrier_on_off(struct k_work *work)
 			ppp_change_phase(ctx, PPP_DEAD);
 
 			ppp_mgmt_raise_carrier_off_event(ctx->iface);
-			net_if_carrier_down(ctx->iface);
+			net_if_carrier_off(ctx->iface);
 		}
 	}
 }

@@ -4,9 +4,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <zephyr.h>
-#include <sys/sys_io.h>
-#include <sys/__assert.h>
+#include <zephyr/kernel.h>
+#include <zephyr/sys/sys_io.h>
+#include <zephyr/sys/__assert.h>
 #include <soc.h>
 #include "soc_i2c.h"
 
@@ -28,7 +28,7 @@ struct mec_i2c_port {
 
 /*
  * indexed by port number: all on VTR1 except as commented
- * NOTE: MCHP MECxxxx data sheets specificy GPIO pin numbers in octal.
+ * NOTE: MCHP MECxxxx data sheets specify GPIO pin numbers in octal.
  * TODO: MEC15xx and MEC172x handle ports with alternate pins.
  */
 static const struct mec_i2c_port mec_i2c_ports[] = {

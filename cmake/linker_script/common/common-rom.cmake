@@ -1,6 +1,7 @@
 # originates from common-rom.ld
 
 zephyr_linker_section(NAME init KVMA RAM_REGION GROUP RODATA_REGION)
+zephyr_linker_section_obj_level(SECTION init LEVEL EARLY)
 zephyr_linker_section_obj_level(SECTION init LEVEL PRE_KERNEL_1)
 zephyr_linker_section_obj_level(SECTION init LEVEL PRE_KERNEL_2)
 zephyr_linker_section_obj_level(SECTION init LEVEL POST_KERNEL)
@@ -8,6 +9,7 @@ zephyr_linker_section_obj_level(SECTION init LEVEL APPLICATION)
 zephyr_linker_section_obj_level(SECTION init LEVEL SMP)
 
 zephyr_linker_section(NAME device KVMA RAM_REGION GROUP RODATA_REGION)
+zephyr_linker_section_obj_level(SECTION device LEVEL EARLY)
 zephyr_linker_section_obj_level(SECTION device LEVEL PRE_KERNEL_1)
 zephyr_linker_section_obj_level(SECTION device LEVEL PRE_KERNEL_2)
 zephyr_linker_section_obj_level(SECTION device LEVEL POST_KERNEL)
@@ -34,7 +36,7 @@ if(CONFIG_CPLUSPLUS)
   #
   # The compiler fills the constructor pointers table below,
   # hence symbol __CTOR_LIST__ must be aligned on word
-  # boundary.  To align with the C++ standard, the first elment
+  # boundary. To align with the C++ standard, the first element
   # of the array contains the number of actual constructors. The
   # last element is NULL.
   #
@@ -143,8 +145,8 @@ endif()
 zephyr_iterable_section(NAME k_p4wq_initparam KVMA RAM_REGION GROUP RODATA_REGION SUBALIGN 4)
 
 if(CONFIG_EMUL)
-  zephyr_linker_section(NAME emulators_section GROUP RODATA_REGION)
-  zephyr_linker_section_configure(SECTION emulators_section INPUT ".emulators" KEEP SORT NAME ${XIP_ALIGN_WITH_INPUT})
+  zephyr_linker_section(NAME emulators_section GROUP RODATA_REGION ${XIP_ALIGN_WITH_INPUT})
+  zephyr_linker_section_configure(SECTION emulators_section INPUT ".emulators" KEEP SORT NAME)
 endif()
 
 if(CONFIG_DNS_SD)

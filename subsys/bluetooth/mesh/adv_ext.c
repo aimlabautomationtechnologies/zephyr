@@ -6,12 +6,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <zephyr.h>
-#include <debug/stack.h>
+#include <zephyr/kernel.h>
+#include <zephyr/debug/stack.h>
 
-#include <net/buf.h>
-#include <bluetooth/bluetooth.h>
-#include <bluetooth/mesh.h>
+#include <zephyr/net/buf.h>
+#include <zephyr/bluetooth/bluetooth.h>
+#include <zephyr/bluetooth/mesh.h>
 
 #define BT_DBG_ENABLED IS_ENABLED(CONFIG_BT_MESH_DEBUG_ADV)
 #define LOG_MODULE_NAME bt_mesh_adv_ext
@@ -33,6 +33,8 @@
 enum {
 	/** Controller is currently advertising */
 	ADV_FLAG_ACTIVE,
+	/** Advertising sending completed */
+	ADV_FLAG_SENT,
 	/** Currently performing proxy advertising */
 	ADV_FLAG_PROXY,
 	/** The send-call has been scheduled. */
@@ -208,6 +210,29 @@ static void send_pending_adv(struct k_work *work)
 	int err;
 
 	adv = CONTAINER_OF(work, struct bt_mesh_ext_adv, work.work);
+
+	if (atomic_test_and_clear_bit(adv->flags, ADV_FLAG_SENT)) {
+		/* Calling k_uptime_delta on a timestamp moves it to the current time.
+		 * This is essential here, as schedule_send() uses the end of the event
+		 * as a reference to avoid sending the next advertisement too soon.
+		 */
+		int64_t duration = k_uptime_delta(&adv->timestamp);
+
+		BT_DBG("Advertising stopped after %u ms", (uint32_t)duration);
+
+		atomic_clear_bit(adv->flags, ADV_FLAG_ACTIVE);
+		atomic_clear_bit(adv->flags, ADV_FLAG_PROXY);
+
+		if (adv->buf) {
+			net_buf_unref(adv->buf);
+			adv->buf = NULL;
+		}
+
+		(void)schedule_send(adv);
+
+		return;
+	}
+
 	atomic_clear_bit(adv->flags, ADV_FLAG_SCHEDULED);
 
 	while ((buf = bt_mesh_adv_buf_get_by_tag(adv->tag, K_NO_WAIT))) {
@@ -296,6 +321,9 @@ void bt_mesh_adv_buf_relay_ready(void)
 			return;
 		}
 	}
+
+	/* Attempt to use the main adv set for the sending of relay messages. */
+	(void)schedule_send(&adv_main);
 }
 
 void bt_mesh_adv_init(void)
@@ -334,21 +362,13 @@ static void adv_sent(struct bt_le_ext_adv *instance,
 		return;
 	}
 
-	/* Calling k_uptime_delta on a timestamp moves it to the current time.
-	 * This is essential here, as schedule_send() uses the end of the event
-	 * as a reference to avoid sending the next advertisement too soon.
-	 */
-	int64_t duration = k_uptime_delta(&adv->timestamp);
-
-	BT_DBG("Advertising stopped after %u ms", (uint32_t)duration);
-
-	atomic_clear_bit(adv->flags, ADV_FLAG_ACTIVE);
-
-	if (!atomic_test_and_clear_bit(adv->flags, ADV_FLAG_PROXY)) {
-		net_buf_unref(adv->buf);
+	if (!atomic_test_bit(adv->flags, ADV_FLAG_ACTIVE)) {
+		return;
 	}
 
-	(void)schedule_send(adv);
+	atomic_set_bit(adv->flags, ADV_FLAG_SENT);
+
+	k_work_submit(&adv->work.work);
 }
 
 #if defined(CONFIG_BT_MESH_GATT_SERVER)
@@ -400,7 +420,7 @@ int bt_mesh_adv_gatt_start(const struct bt_le_adv_param *param,
 	struct bt_mesh_ext_adv *adv = gatt_adv_get();
 	struct bt_le_ext_adv_start_param start = {
 		/* Timeout is set in 10 ms steps, with 0 indicating "forever" */
-		.timeout = (duration == SYS_FOREVER_MS) ? 0 : (duration / 10),
+		.timeout = (duration == SYS_FOREVER_MS) ? 0 : MAX(1, duration / 10),
 	};
 
 	BT_DBG("Start advertising %d ms", duration);

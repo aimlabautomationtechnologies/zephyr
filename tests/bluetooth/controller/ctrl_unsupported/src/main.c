@@ -5,12 +5,12 @@
  */
 
 #include <zephyr/types.h>
-#include <ztest.h>
+#include <zephyr/ztest.h>
 
-#include <bluetooth/hci.h>
-#include <sys/byteorder.h>
-#include <sys/slist.h>
-#include <sys/util.h>
+#include <zephyr/bluetooth/hci.h>
+#include <zephyr/sys/byteorder.h>
+#include <zephyr/sys/slist.h>
+#include <zephyr/sys/util.h>
 #include "hal/ccm.h"
 
 #include "util/util.h"
@@ -26,10 +26,16 @@
 #include "lll.h"
 #include "lll_df_types.h"
 #include "lll_conn.h"
+#include "lll_conn_iso.h"
+
 #include "ull_tx_queue.h"
 
+#include "isoal.h"
+#include "ull_iso_types.h"
+#include "ull_conn_iso_types.h"
 #include "ull_conn_types.h"
 #include "ull_llcp.h"
+#include "ull_conn_internal.h"
 #include "ull_llcp_internal.h"
 
 #include "helper_pdu.h"
@@ -98,7 +104,7 @@ static void lt_tx_pdu_and_rx_unknown_rsp(enum helper_pdu_opcode opcode)
 	/* There should not be a host notifications */
 	ut_rx_q_is_empty();
 
-	zassert_equal(ctx_buffers_free(), CONFIG_BT_CTLR_LLCP_PROC_CTX_BUF_NUM,
+	zassert_equal(ctx_buffers_free(), test_ctx_buffers_cnt(),
 		      "Free CTX buffers %d", ctx_buffers_free());
 }
 
@@ -148,7 +154,7 @@ static void lt_tx_undef_opcode_and_rx_unknown_rsp(uint8_t opcode)
 	/* There should not be a host notifications */
 	ut_rx_q_is_empty();
 
-	zassert_equal(ctx_buffers_free(), CONFIG_BT_CTLR_LLCP_PROC_CTX_BUF_NUM,
+	zassert_equal(ctx_buffers_free(), test_ctx_buffers_cnt(),
 		      "Free CTX buffers %d", ctx_buffers_free());
 }
 

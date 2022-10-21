@@ -3,21 +3,21 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  */
-#include <kernel.h>
+#include <zephyr/kernel.h>
 #include <ksched.h>
-#include <spinlock.h>
-#include <kernel/sched_priq.h>
-#include <wait_q.h>
+#include <zephyr/spinlock.h>
+#include <zephyr/kernel/sched_priq.h>
+#include <zephyr/wait_q.h>
 #include <kswap.h>
 #include <kernel_arch_func.h>
-#include <syscall_handler.h>
-#include <drivers/timer/system_timer.h>
+#include <zephyr/syscall_handler.h>
+#include <zephyr/drivers/timer/system_timer.h>
 #include <stdbool.h>
 #include <kernel_internal.h>
-#include <logging/log.h>
-#include <sys/atomic.h>
-#include <sys/math_extras.h>
-#include <timing/timing.h>
+#include <zephyr/logging/log.h>
+#include <zephyr/sys/atomic.h>
+#include <zephyr/sys/math_extras.h>
+#include <zephyr/timing/timing.h>
 
 LOG_MODULE_DECLARE(os, CONFIG_KERNEL_LOG_LEVEL);
 
@@ -269,6 +269,25 @@ static ALWAYS_INLINE void dequeue_thread(struct k_thread *thread)
 	}
 }
 
+static void signal_pending_ipi(void)
+{
+	/* Synchronization note: you might think we need to lock these
+	 * two steps, but an IPI is idempotent.  It's OK if we do it
+	 * twice.  All we require is that if a CPU sees the flag true,
+	 * it is guaranteed to send the IPI, and if a core sets
+	 * pending_ipi, the IPI will be sent the next time through
+	 * this code.
+	 */
+#if defined(CONFIG_SMP) && defined(CONFIG_SCHED_IPI_SUPPORTED)
+	if (CONFIG_MP_NUM_CPUS > 1) {
+		if (_kernel.pending_ipi) {
+			_kernel.pending_ipi = false;
+			arch_sched_ipi();
+		}
+	}
+#endif
+}
+
 #ifdef CONFIG_SMP
 /* Called out of z_swap() when CONFIG_SMP.  The current thread can
  * never live in the run queue until we are inexorably on the context
@@ -281,6 +300,7 @@ void z_requeue_current(struct k_thread *curr)
 	if (z_is_thread_queued(curr)) {
 		runq_add(curr);
 	}
+	signal_pending_ipi();
 }
 
 static inline bool is_aborting(struct k_thread *thread)
@@ -334,8 +354,8 @@ static ALWAYS_INLINE struct k_thread *next_up(void)
 		end_thread(_current);
 	}
 
-	int queued = z_is_thread_queued(_current);
-	int active = !z_is_thread_prevented_from_running(_current);
+	bool queued = z_is_thread_queued(_current);
+	bool active = !z_is_thread_prevented_from_running(_current);
 
 	if (thread == NULL) {
 		thread = _current_cpu->idle_thread;
@@ -583,6 +603,15 @@ static bool thread_active_elsewhere(struct k_thread *thread)
 	return false;
 }
 
+static void flag_ipi(void)
+{
+#if defined(CONFIG_SMP) && defined(CONFIG_SCHED_IPI_SUPPORTED)
+	if (CONFIG_MP_NUM_CPUS > 1) {
+		_kernel.pending_ipi = true;
+	}
+#endif
+}
+
 static void ready_thread(struct k_thread *thread)
 {
 #ifdef CONFIG_KERNEL_COHERENCE
@@ -597,9 +626,7 @@ static void ready_thread(struct k_thread *thread)
 
 		queue_thread(thread);
 		update_cache(0);
-#if defined(CONFIG_SMP) &&  defined(CONFIG_SCHED_IPI_SUPPORTED)
-		arch_sched_ipi();
-#endif
+		flag_ipi();
 	}
 }
 
@@ -728,17 +755,13 @@ static void add_thread_timeout(struct k_thread *thread, k_timeout_t timeout)
 	}
 }
 
-static void pend(struct k_thread *thread, _wait_q_t *wait_q,
-		 k_timeout_t timeout)
+static void pend_locked(struct k_thread *thread, _wait_q_t *wait_q,
+			k_timeout_t timeout)
 {
 #ifdef CONFIG_KERNEL_COHERENCE
 	__ASSERT_NO_MSG(wait_q == NULL || arch_mem_coherent(wait_q));
 #endif
-
-	LOCKED(&sched_spinlock) {
-		add_to_waitq_locked(thread, wait_q);
-	}
-
+	add_to_waitq_locked(thread, wait_q);
 	add_thread_timeout(thread, timeout);
 }
 
@@ -746,7 +769,9 @@ void z_pend_thread(struct k_thread *thread, _wait_q_t *wait_q,
 		   k_timeout_t timeout)
 {
 	__ASSERT_NO_MSG(thread == _current || is_thread_dummy(thread));
-	pend(thread, wait_q, timeout);
+	LOCKED(&sched_spinlock) {
+		pend_locked(thread, wait_q, timeout);
+	}
 }
 
 static inline void unpend_thread_no_timeout(struct k_thread *thread)
@@ -788,7 +813,12 @@ void z_thread_timeout(struct _timeout *timeout)
 
 int z_pend_curr_irqlock(uint32_t key, _wait_q_t *wait_q, k_timeout_t timeout)
 {
-	pend(_current, wait_q, timeout);
+	/* This is a legacy API for pre-switch architectures and isn't
+	 * correctly synchronized for multi-cpu use
+	 */
+	__ASSERT_NO_MSG(!IS_ENABLED(CONFIG_SMP));
+
+	pend_locked(_current, wait_q, timeout);
 
 #if defined(CONFIG_TIMESLICING) && defined(CONFIG_SWAP_NONATOMIC)
 	pending_current = _current;
@@ -811,8 +841,20 @@ int z_pend_curr(struct k_spinlock *lock, k_spinlock_key_t key,
 #if defined(CONFIG_TIMESLICING) && defined(CONFIG_SWAP_NONATOMIC)
 	pending_current = _current;
 #endif
-	pend(_current, wait_q, timeout);
-	return z_swap(lock, key);
+	__ASSERT_NO_MSG(sizeof(sched_spinlock) == 0 || lock != &sched_spinlock);
+
+	/* We do a "lock swap" prior to calling z_swap(), such that
+	 * the caller's lock gets released as desired.  But we ensure
+	 * that we hold the scheduler lock and leave local interrupts
+	 * masked until we reach the context swich.  z_swap() itself
+	 * has similar code; the duplication is because it's a legacy
+	 * API that doesn't expect to be called with scheduler lock
+	 * held.
+	 */
+	(void) k_spin_lock(&sched_spinlock);
+	pend_locked(_current, wait_q, timeout);
+	k_spin_release(lock);
+	return z_swap(&sched_spinlock, key);
 }
 
 struct k_thread *z_unpend1_no_timeout(_wait_q_t *wait_q)
@@ -886,9 +928,7 @@ void z_thread_priority_set(struct k_thread *thread, int prio)
 {
 	bool need_sched = z_set_prio(thread, prio);
 
-#if defined(CONFIG_SMP) && defined(CONFIG_SCHED_IPI_SUPPORTED)
-	arch_sched_ipi();
-#endif
+	flag_ipi();
 
 	if (need_sched && _current->base.sched_locked == 0U) {
 		z_reschedule_unlocked();
@@ -928,6 +968,7 @@ void z_reschedule(struct k_spinlock *lock, k_spinlock_key_t key)
 		z_swap(lock, key);
 	} else {
 		k_spin_unlock(lock, key);
+		signal_pending_ipi();
 	}
 }
 
@@ -937,6 +978,7 @@ void z_reschedule_irqlock(uint32_t key)
 		z_swap_irqlock(key);
 	} else {
 		irq_unlock(key);
+		signal_pending_ipi();
 	}
 }
 
@@ -970,7 +1012,16 @@ void k_sched_unlock(void)
 struct k_thread *z_swap_next_thread(void)
 {
 #ifdef CONFIG_SMP
-	return next_up();
+	struct k_thread *ret = next_up();
+
+	if (ret == _current) {
+		/* When not swapping, have to signal IPIs here.  In
+		 * the context switch case it must happen later, after
+		 * _current gets requeued.
+		 */
+		signal_pending_ipi();
+	}
+	return ret;
 #else
 	return _kernel.ready_q.cache;
 #endif
@@ -984,6 +1035,37 @@ static inline void set_current(struct k_thread *new_thread)
 	_current_cpu->current = new_thread;
 }
 
+/**
+ * @brief Determine next thread to execute upon completion of an interrupt
+ *
+ * Thread preemption is performed by context switching after the completion
+ * of a non-recursed interrupt. This function determines which thread to
+ * switch to if any. This function accepts as @p interrupted either:
+ *
+ * - The handle for the interrupted thread in which case the thread's context
+ *   must already be fully saved and ready to be picked up by a different CPU.
+ *
+ * - NULL if more work is required to fully save the thread's state after
+ *   it is known that a new thread is to be scheduled. It is up to the caller
+ *   to store the handle resulting from the thread that is being switched out
+ *   in that thread's "switch_handle" field after its
+ *   context has fully been saved, following the same requirements as with
+ *   the @ref arch_switch() function.
+ *
+ * If a new thread needs to be scheduled then its handle is returned.
+ * Otherwise the same value provided as @p interrupted is returned back.
+ * Those handles are the same opaque types used by the @ref arch_switch()
+ * function.
+ *
+ * @warning
+ * The @ref _current value may have changed after this call and not refer
+ * to the interrupted thread anymore. It might be necessary to make a local
+ * copy before calling this function.
+ *
+ * @param interrupted Handle for the thread that was interrupted or NULL.
+ * @retval Handle for the next thread to execute, or @p interrupted when
+ *         no new thread is to be scheduled.
+ */
 void *z_get_next_switch_handle(void *interrupted)
 {
 	z_check_stack_sentinel();
@@ -1039,6 +1121,7 @@ void *z_get_next_switch_handle(void *interrupted)
 			new_thread->switch_handle = NULL;
 		}
 	}
+	signal_pending_ipi();
 	return ret;
 #else
 	z_sched_usage_switch(_kernel.ready_q.cache);
@@ -1294,6 +1377,12 @@ static inline void z_vrfy_k_thread_deadline_set(k_tid_t tid, int deadline)
 #endif
 #endif
 
+bool k_can_yield(void)
+{
+	return !(k_is_pre_kernel() || k_is_in_isr() ||
+		 z_is_idle_thread_object(_current));
+}
+
 void z_impl_k_yield(void)
 {
 	__ASSERT(!arch_is_in_isr(), "");
@@ -1444,9 +1533,7 @@ void z_impl_k_wakeup(k_tid_t thread)
 	z_mark_thread_as_not_suspended(thread);
 	z_ready_thread(thread);
 
-#if defined(CONFIG_SMP) && defined(CONFIG_SCHED_IPI_SUPPORTED)
-	arch_sched_ipi();
-#endif
+	flag_ipi();
 
 	if (!arch_is_in_isr()) {
 		z_reschedule_unlocked();
@@ -1528,6 +1615,11 @@ static int cpu_mask_mod(k_tid_t thread, uint32_t enable_mask, uint32_t disable_m
 {
 	int ret = 0;
 
+#ifdef CONFIG_SCHED_CPU_MASK_PIN_ONLY
+	__ASSERT(z_is_thread_prevented_from_running(thread),
+		 "Running threads cannot change CPU pin");
+#endif
+
 	LOCKED(&sched_spinlock) {
 		if (z_is_thread_prevented_from_running(thread)) {
 			thread->base.cpu_mask |= enable_mask;
@@ -1565,6 +1657,17 @@ int k_thread_cpu_mask_enable(k_tid_t thread, int cpu)
 int k_thread_cpu_mask_disable(k_tid_t thread, int cpu)
 {
 	return cpu_mask_mod(thread, 0, BIT(cpu));
+}
+
+int k_thread_cpu_pin(k_tid_t thread, int cpu)
+{
+	int ret;
+
+	ret = k_thread_cpu_mask_clear(thread);
+	if (ret == 0) {
+		return k_thread_cpu_mask_enable(thread, cpu);
+	}
+	return ret;
 }
 
 #endif /* CONFIG_SCHED_CPU_MASK */
@@ -1624,6 +1727,13 @@ void z_thread_abort(struct k_thread *thread)
 {
 	k_spinlock_key_t key = k_spin_lock(&sched_spinlock);
 
+	if ((thread->base.user_options & K_ESSENTIAL) != 0) {
+		k_spin_unlock(&sched_spinlock, key);
+		__ASSERT(false, "aborting essential thread %p", thread);
+		k_panic();
+		return;
+	}
+
 	if ((thread->base.thread_state & _THREAD_DEAD) != 0U) {
 		k_spin_unlock(&sched_spinlock, key);
 		return;
@@ -1641,6 +1751,9 @@ void z_thread_abort(struct k_thread *thread)
 		/* It's running somewhere else, flag and poke */
 		thread->base.thread_state |= _THREAD_ABORTING;
 
+		/* We're going to spin, so need a true synchronous IPI
+		 * here, not deferred!
+		 */
 #ifdef CONFIG_SCHED_IPI_SUPPORTED
 		arch_sched_ipi();
 #endif

@@ -12,7 +12,8 @@
 #ifndef _CYPRESS_PSOC6_DT_H_
 #define _CYPRESS_PSOC6_DT_H_
 
-#include <devicetree.h>
+#include <zephyr/devicetree.h>
+#include <zephyr/irq.h>
 
 /*
  * Devicetree macros related to interrupt
@@ -100,7 +101,7 @@
 			    isr, DEVICE_DT_INST_GET(n), 0);\
 		CY_PSOC6_NVIC_MUX_MAP(n);		\
 		irq_enable(CY_PSOC6_NVIC_MUX_IRQN(n));	\
-	} while (0)
+	} while (false)
 
 /*
  * Devicetree related macros to construct pin control config data
@@ -152,7 +153,7 @@
 /* internal macro to structure things for use with UTIL_LISTIFY */
 #define CY_PSOC6_PIN_ELEM(idx, inst) CY_PSOC6_DT_INST_PIN(inst, idx)
 
-/* Construct an array intializer for soc_gpio_pin for a device instance */
+/* Construct an array initializer for soc_gpio_pin for a device instance */
 #define CY_PSOC6_DT_INST_PINS(inst)			\
 	{ LISTIFY(CY_PSOC6_DT_INST_NUM_PINS(inst),	\
 		  CY_PSOC6_PIN_ELEM, (,), inst)	\

@@ -4,28 +4,28 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <logging/log.h>
+#include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(dw1000, LOG_LEVEL_INF);
 
 #include <errno.h>
-#include <kernel.h>
-#include <arch/cpu.h>
-#include <debug/stack.h>
-#include <device.h>
-#include <init.h>
-#include <net/net_if.h>
-#include <net/net_pkt.h>
+#include <zephyr/kernel.h>
+#include <zephyr/arch/cpu.h>
+#include <zephyr/debug/stack.h>
+#include <zephyr/device.h>
+#include <zephyr/init.h>
+#include <zephyr/net/net_if.h>
+#include <zephyr/net/net_pkt.h>
 
-#include <sys/byteorder.h>
+#include <zephyr/sys/byteorder.h>
 #include <string.h>
-#include <random/rand32.h>
-#include <debug/stack.h>
+#include <zephyr/random/rand32.h>
+#include <zephyr/debug/stack.h>
 #include <math.h>
 
-#include <drivers/gpio.h>
-#include <drivers/spi.h>
+#include <zephyr/drivers/gpio.h>
+#include <zephyr/drivers/spi.h>
 
-#include <net/ieee802154_radio.h>
+#include <zephyr/net/ieee802154_radio.h>
 #include "ieee802154_dw1000_regs.h"
 
 #define DT_DRV_COMPAT decawave_dw1000
@@ -140,7 +140,7 @@ static struct dwt_context dwt_0_context = {
 	},
 };
 
-/* This structer is used to read all additional RX frame info at one push */
+/* This struct is used to read all additional RX frame info at one push */
 struct dwt_rx_info_regs {
 	uint8_t rx_fqual[DWT_RX_FQUAL_LEN];
 	uint8_t rx_ttcki[DWT_RX_TTCKI_LEN];
@@ -420,8 +420,8 @@ static inline void dwt_irq_handle_rx(const struct device *dev, uint32_t sys_stat
 		pkt_len -= DWT_FCS_LENGTH;
 	}
 
-	pkt = net_pkt_alloc_with_buffer(ctx->iface, pkt_len,
-					AF_UNSPEC, 0, K_NO_WAIT);
+	pkt = net_pkt_rx_alloc_with_buffer(ctx->iface, pkt_len,
+					   AF_UNSPEC, 0, K_NO_WAIT);
 	if (!pkt) {
 		LOG_ERR("No buf available");
 		goto rx_out_enable_rx;
@@ -439,7 +439,7 @@ static inline void dwt_irq_handle_rx(const struct device *dev, uint32_t sys_stat
 	 */
 	ttcki = sys_get_le32(rx_inf_reg.rx_ttcki);
 	ttcko = sys_get_le32(rx_inf_reg.rx_ttcko) & DWT_RX_TTCKO_RXTOFS_MASK;
-	/* Traking offset value is a 19-bit signed integer */
+	/* Tracking offset value is a 19-bit signed integer */
 	if (ttcko & BIT(18)) {
 		ttcko |= ~DWT_RX_TTCKO_RXTOFS_MASK;
 	}
@@ -1210,7 +1210,7 @@ static int dwt_initialise_dev(const struct device *dev)
 	 *  - On wake-up load configurations from the AON memory
 	 *  - preserve sleep mode configuration
 	 *  - On Wake-up load the LDE microcode
-	 *  - When avaiable, on wake-up load the LDO tune value
+	 *  - When available, on wake-up load the LDO tune value
 	 */
 	ctx->sleep_mode |= DWT_AON_WCFG_ONW_LDC |
 			   DWT_AON_WCFG_PRES_SLEEP;

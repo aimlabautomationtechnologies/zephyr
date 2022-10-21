@@ -30,7 +30,6 @@ config SOC_MIMXRT685S_CM33
 	select HAS_MCUX_USDHC2
 	select INIT_SYS_PLL
 	select HAS_MCUX_USB_LPCIP3511
-	select USB_DEDICATED_MEMORY if USB_DEVICE_DRIVER
 	select HAS_MCUX_CTIMER
 endchoice
 
@@ -61,9 +60,6 @@ config INIT_SYS_PLL
 
 config INIT_AUDIO_PLL
 	bool "Initialize Audio PLL"
-
-config USB_DEDICATED_MEMORY
-	bool "Dedicated memory for USB transfer buffer and controller operation buffers"
 
 config XTAL_SYS_CLK_HZ
 	int "External oscillator frequency"
@@ -100,7 +96,7 @@ config FLASH_CONFIG_OFFSET
 	default 0x400
 	help
 	  The flash config offset provides the boot ROM with the on-board
-	  flash type and parameters. The boot ROM requires a fixed flash conifg
+	  flash type and parameters. The boot ROM requires a fixed flash config
 	  offset for FlexSPI device.
 
 config IMAGE_VECTOR_TABLE_OFFSET

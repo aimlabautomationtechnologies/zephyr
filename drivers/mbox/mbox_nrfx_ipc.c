@@ -4,11 +4,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <drivers/mbox.h>
+#include <zephyr/drivers/mbox.h>
 #include <nrfx_ipc.h>
 
 #define LOG_LEVEL CONFIG_MBOX_LOG_LEVEL
-#include <logging/log.h>
+#include <zephyr/logging/log.h>
+#include <zephyr/irq.h>
 LOG_MODULE_REGISTER(mbox_nrfx_ipc);
 
 #define DT_DRV_COMPAT nordic_mbox_nrf_ipc

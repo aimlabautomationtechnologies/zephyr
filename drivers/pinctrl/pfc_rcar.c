@@ -7,10 +7,11 @@
 
 #define DT_DRV_COMPAT renesas_rcar_pfc
 
-#include <devicetree.h>
-#include <drivers/pinctrl.h>
+#include <zephyr/arch/cpu.h>
+#include <zephyr/devicetree.h>
+#include <zephyr/drivers/pinctrl.h>
 #include <soc.h>
-#include <sys/util.h>
+#include <zephyr/sys/util.h>
 
 #define PFC_REG_BASE  DT_INST_REG_ADDR(0)
 #define PFC_RCAR_PMMR 0x0
@@ -120,7 +121,7 @@ static const struct pfc_bias_reg *pfc_rcar_get_bias_reg(uint16_t pin,
 {
 	const struct pfc_bias_reg *bias_regs = pfc_rcar_get_bias_regs();
 
-	/* Loop arround all the registers to find the bit for a given pin */
+	/* Loop around all the registers to find the bit for a given pin */
 	while (bias_regs->puen && bias_regs->pud) {
 		for (size_t i = 0U; i < ARRAY_SIZE(bias_regs->pins); i++) {
 			if (bias_regs->pins[i] == pin) {

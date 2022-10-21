@@ -4,15 +4,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <zephyr.h>
-#include <ztest.h>
-#include <pm/pm.h>
-#include <pm/device.h>
+#include <zephyr/kernel.h>
+#include <zephyr/ztest.h>
+#include <zephyr/pm/pm.h>
+#include <zephyr/pm/device.h>
 
-#define DEV_NAME DT_NODELABEL(gpio0)
-
-
-static const struct device *dev;
+static const struct device *const dev =
+	DEVICE_DT_GET(DT_NODELABEL(gpio0));
 static uint8_t sleep_count;
 
 
@@ -36,7 +34,7 @@ void pm_state_set(enum pm_state state, uint8_t substate_id)
 		/* Enable wakeup source. Next time the system is called
 		 * to sleep, this device will still be active.
 		 */
-		(void)pm_device_wakeup_enable((struct device *)dev, true);
+		(void)pm_device_wakeup_enable(dev, true);
 		break;
 	case 2:
 		zassert_equal(state, PM_STATE_SUSPEND_TO_RAM, "Wrong system state");
@@ -76,30 +74,29 @@ const struct pm_state_info *pm_policy_next_state(uint8_t cpu, int32_t ticks)
 	return NULL;
 }
 
-void test_wakeup_device_api(void)
+ZTEST(wakeup_device_1cpu, test_wakeup_device_api)
 {
 	bool ret = false;
 
-	dev = DEVICE_DT_GET(DEV_NAME);
-	zassert_not_null(dev, "Failed to get device");
+	zassert_true(device_is_ready(dev), "Device not ready");
 
 	ret = pm_device_wakeup_is_capable(dev);
-	zassert_true(ret, "Device marked as capable");
+	zassert_true(ret, "Device not marked as capable");
 
-	ret = pm_device_wakeup_enable((struct device *)dev, true);
+	ret = pm_device_wakeup_enable(dev, true);
 	zassert_true(ret, "Could not enable wakeup source");
 
 	ret = pm_device_wakeup_is_enabled(dev);
 	zassert_true(ret, "Wakeup source not enabled");
 
-	ret = pm_device_wakeup_enable((struct device *)dev, false);
+	ret = pm_device_wakeup_enable(dev, false);
 	zassert_true(ret, "Could not disable wakeup source");
 
 	ret = pm_device_wakeup_is_enabled(dev);
 	zassert_false(ret, "Wakeup source is enabled");
 }
 
-void test_wakeup_device_system_pm(void)
+ZTEST(wakeup_device_1cpu, test_wakeup_device_system_pm)
 {
 	/*
 	 * Trigger system PM. The policy manager will return
@@ -116,11 +113,5 @@ void test_wakeup_device_system_pm(void)
 	k_sleep(K_SECONDS(1));
 }
 
-void test_main(void)
-{
-	ztest_test_suite(wakeup_device_test,
-			 ztest_1cpu_unit_test(test_wakeup_device_api),
-			 ztest_1cpu_unit_test(test_wakeup_device_system_pm)
-		);
-	ztest_run_test_suite(wakeup_device_test);
-}
+ZTEST_SUITE(wakeup_device_1cpu, NULL, NULL, ztest_simple_1cpu_before,
+			ztest_simple_1cpu_after, NULL);

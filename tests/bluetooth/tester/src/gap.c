@@ -6,22 +6,22 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <sys/atomic.h>
+#include <zephyr/sys/atomic.h>
 #include <zephyr/types.h>
 #include <string.h>
 
-#include <toolchain.h>
-#include <bluetooth/bluetooth.h>
-#include <bluetooth/conn.h>
-#include <bluetooth/gatt.h>
-#include <bluetooth/hci.h>
+#include <zephyr/toolchain.h>
+#include <zephyr/bluetooth/bluetooth.h>
+#include <zephyr/bluetooth/conn.h>
+#include <zephyr/bluetooth/gatt.h>
+#include <zephyr/bluetooth/hci.h>
 
-#include <sys/byteorder.h>
-#include <net/buf.h>
+#include <zephyr/sys/byteorder.h>
+#include <zephyr/net/buf.h>
 
 #include <hci_core.h>
 
-#include <logging/log.h>
+#include <zephyr/logging/log.h>
 #define LOG_MODULE_NAME bttester_gap
 LOG_MODULE_REGISTER(LOG_MODULE_NAME);
 
@@ -84,7 +84,7 @@ static uint8_t read_car_cb(struct bt_conn *conn, uint8_t err,
 	bt_conn_get_info(conn, &info);
 
 	for (int i = 0; i < CONFIG_BT_MAX_PAIRED; i++) {
-		if (bt_addr_le_cmp(info.le.dst, &cars[i].addr) == 0) {
+		if (bt_addr_le_eq(info.le.dst, &cars[i].addr)) {
 			cars[i].supported = supported;
 			break;
 		}
@@ -254,6 +254,7 @@ static void supported_commands(uint8_t *data, uint16_t len)
 	tester_set_bit(cmds, GAP_OOB_SC_GET_LOCAL_DATA);
 	tester_set_bit(cmds, GAP_OOB_SC_SET_REMOTE_DATA);
 #endif /* !defined(CONFIG_BT_SMP_OOB_LEGACY_PAIR_ONLY) */
+	tester_set_bit(cmds, GAP_SET_FILTER_LIST);
 
 	tester_send(BTP_SERVICE_ID_GAP, GAP_READ_SUPPORTED_COMMANDS,
 		    CONTROLLER_INDEX, (uint8_t *) rp, sizeof(cmds));
@@ -354,7 +355,7 @@ static void oob_data_request(struct bt_conn *conn,
 	{
 		LOG_DBG("Set %s OOB SC data for %s, ",
 			oob_config_str(oob_info->lesc.oob_config),
-			log_strdup(addr));
+			addr);
 
 		struct bt_le_oob_sc_data *oobd_local =
 			oob_info->lesc.oob_config != BT_CONN_OOB_REMOTE_ONLY ?
@@ -374,10 +375,10 @@ static void oob_data_request(struct bt_conn *conn,
 		}
 
 		if (oobd_local &&
-		    bt_addr_le_cmp(info.le.local, &oob_sc_local.addr)) {
+		    !bt_addr_le_eq(info.le.local, &oob_sc_local.addr)) {
 			bt_addr_le_to_str(info.le.local, addr, sizeof(addr));
 			LOG_DBG("No OOB data available for local %s",
-				log_strdup(addr));
+				addr);
 			bt_conn_auth_cancel(conn);
 			return;
 		}
@@ -393,7 +394,7 @@ static void oob_data_request(struct bt_conn *conn,
 
 #if !defined(CONFIG_BT_SMP_SC_PAIR_ONLY)
 	case BT_CONN_OOB_LE_LEGACY:
-		LOG_DBG("Legacy OOB TK requested from remote %s", log_strdup(addr));
+		LOG_DBG("Legacy OOB TK requested from remote %s", addr);
 
 		err = bt_le_oob_set_legacy_tk(conn, oob_legacy_tk);
 		if (err < 0) {
@@ -589,7 +590,7 @@ static void start_directed_advertising(const uint8_t *data, uint16_t len)
 #if defined(CONFIG_BT_PRIVACY)
 		/* check if peer supports Central Address Resolution */
 		for (int i = 0; i < CONFIG_BT_MAX_PAIRED; i++) {
-			if (bt_addr_le_cmp(peer, &cars[i].addr) == 0) {
+			if (bt_addr_le_eq(peer, &cars[i].addr)) {
 				if (cars[i].supported) {
 					adv_param.options |= BT_LE_ADV_OPT_DIR_ADDR_RPA;
 				}
@@ -724,7 +725,7 @@ static void device_found(const bt_addr_le_t *addr, int8_t rssi, uint8_t evtype,
 		 * Advertisement, but if not if send stored event and ignore
 		 * this one
 		 */
-		if (bt_addr_le_cmp(addr, &a)) {
+		if (!bt_addr_le_eq(addr, &a)) {
 			LOG_INF("Address does not match, skipping");
 			goto done;
 		}
@@ -808,19 +809,32 @@ static void stop_discovery(const uint8_t *data, uint16_t len)
 
 static void connect(const uint8_t *data, uint16_t len)
 {
-	struct bt_conn *conn;
+	const bt_addr_le_t *addr = (const bt_addr_le_t *)data;
 	uint8_t status;
 	int err;
 
-	err = bt_conn_le_create((bt_addr_le_t *) data, BT_CONN_LE_CREATE_CONN,
-				 BT_LE_CONN_PARAM_DEFAULT, &conn);
-	if (err) {
-		LOG_ERR("Failed to create connection (%d)", err);
-		status = BTP_STATUS_FAILED;
-		goto rsp;
+	if (!bt_addr_le_eq(addr, BT_ADDR_LE_ANY)) {
+		struct bt_conn *conn;
+
+		err = bt_conn_le_create(addr, BT_CONN_LE_CREATE_CONN,
+					BT_LE_CONN_PARAM_DEFAULT, &conn);
+		if (err) {
+			LOG_ERR("Failed to create connection (%d)", err);
+			status = BTP_STATUS_FAILED;
+			goto rsp;
+		}
+
+		bt_conn_unref(conn);
+	} else {
+		err = bt_conn_le_create_auto(BT_CONN_LE_CREATE_CONN,
+					     BT_LE_CONN_PARAM_DEFAULT);
+		if (err) {
+			LOG_ERR("Failed to create auto connection (%d)", err);
+			status = BTP_STATUS_FAILED;
+			goto rsp;
+		}
 	}
 
-	bt_conn_unref(conn);
 	status = BTP_STATUS_SUCCESS;
 
 rsp:
@@ -943,6 +957,11 @@ static void auth_pairing_complete(struct bt_conn *conn, bool bonded)
 #endif
 }
 
+static struct bt_conn_auth_info_cb auth_info_cb = {
+	.pairing_failed = auth_pairing_failed,
+	.pairing_complete = auth_pairing_complete,
+};
+
 static void set_io_cap(const uint8_t *data, uint16_t len)
 {
 	const struct gap_set_io_cap_cmd *cmd = (void *) data;
@@ -984,8 +1003,6 @@ static void set_io_cap(const uint8_t *data, uint16_t len)
 	}
 
 	cb.pairing_accept = auth_pairing_accept;
-	cb.pairing_failed = auth_pairing_failed;
-	cb.pairing_complete = auth_pairing_complete;
 
 	if (bt_conn_auth_cb_register(&cb)) {
 		status = BTP_STATUS_FAILED;
@@ -1176,6 +1193,35 @@ static void set_oob_legacy_data(const uint8_t *data, uint16_t len)
 		   CONTROLLER_INDEX, BTP_STATUS_SUCCESS);
 }
 
+static void set_filter_list(const uint8_t *data, uint16_t len)
+{
+	const struct gap_set_filter_list *cmd = (const void *) data;
+	uint8_t status;
+	int err;
+
+	if (len < sizeof(*cmd) ||
+	    len != (sizeof(*cmd) + (cmd->cnt * sizeof(cmd->addr[0])))) {
+		status = BTP_STATUS_FAILED;
+		goto failed;
+	}
+
+	(void)bt_le_filter_accept_list_clear();
+
+	for (int i = 0; i < cmd->cnt; i++) {
+		err = bt_le_filter_accept_list_add(&cmd->addr[i]);
+		if (err < 0) {
+			status = BTP_STATUS_FAILED;
+			goto failed;
+		}
+	}
+
+	status = BTP_STATUS_SUCCESS;
+
+failed:
+	tester_rsp(BTP_SERVICE_ID_GAP, GAP_SET_FILTER_LIST,
+		   CONTROLLER_INDEX, status);
+}
+
 void tester_handle_gap(uint8_t opcode, uint8_t index, uint8_t *data,
 		       uint16_t len)
 {
@@ -1274,6 +1320,9 @@ void tester_handle_gap(uint8_t opcode, uint8_t index, uint8_t *data,
 		set_oob_sc_remote_data(data, len);
 		return;
 #endif /* !defined(CONFIG_BT_SMP_OOB_LEGACY_PAIR_ONLY) */
+	case GAP_SET_FILTER_LIST:
+		set_filter_list(data, len);
+		return;
 	default:
 		LOG_WRN("Unknown opcode: 0x%x", opcode);
 		tester_rsp(BTP_SERVICE_ID_GAP, opcode, index,
@@ -1316,6 +1365,7 @@ uint8_t tester_init_gap(void)
 	if (bt_conn_auth_cb_register(&cb)) {
 		return BTP_STATUS_FAILED;
 	}
+	bt_conn_auth_info_cb_register(&auth_info_cb);
 
 	err = bt_enable(tester_init_gap_cb);
 	if (err < 0) {

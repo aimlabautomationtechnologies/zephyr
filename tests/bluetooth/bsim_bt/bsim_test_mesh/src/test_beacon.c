@@ -3,8 +3,8 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  */
-#include <kernel.h>
-#include <bluetooth/hci.h>
+#include <zephyr/kernel.h>
+#include <zephyr/bluetooth/hci.h>
 #include "mesh_test.h"
 #include "mesh/adv.h"
 #include "mesh/net.h"
@@ -15,12 +15,12 @@
 
 #define LOG_MODULE_NAME test_beacon
 
-#include <logging/log.h>
+#include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(LOG_MODULE_NAME, LOG_LEVEL_INF);
 
 #define GROUP_ADDR 0xc000
 #define WAIT_TIME 60 /*seconds*/
-#define BEACON_INTERVAL       K_SECONDS(10)
+#define BEACON_INTERVAL 10 /*seconds*/
 
 #define BEACON_TYPE_SECURE 0x01
 
@@ -97,19 +97,19 @@ static void test_tx_on_iv_update(void)
 	ASSERT_TRUE(atomic_test_bit(bt_mesh.flags, BT_MESH_IVU_IN_PROGRESS));
 	ASSERT_TRUE(bt_mesh.iv_index == 1);
 
-	k_sleep(BEACON_INTERVAL);
+	k_sleep(K_SECONDS(BEACON_INTERVAL));
 
 	ASSERT_TRUE(!bt_mesh_iv_update());
 	ASSERT_TRUE(!atomic_test_bit(bt_mesh.flags, BT_MESH_IVU_IN_PROGRESS));
 	ASSERT_TRUE(bt_mesh.iv_index == 1);
 
-	k_sleep(BEACON_INTERVAL);
+	k_sleep(K_SECONDS(BEACON_INTERVAL));
 
 	ASSERT_TRUE(bt_mesh_iv_update());
 	ASSERT_TRUE(atomic_test_bit(bt_mesh.flags, BT_MESH_IVU_IN_PROGRESS));
 	ASSERT_TRUE(bt_mesh.iv_index == 2);
 
-	k_sleep(BEACON_INTERVAL);
+	k_sleep(K_SECONDS(BEACON_INTERVAL));
 
 	PASS();
 }
@@ -134,19 +134,19 @@ static void test_rx_on_iv_update(void)
 	ASSERT_TRUE(atomic_test_bit(bt_mesh.flags, BT_MESH_IVU_TEST));
 	ivu_log();
 
-	k_sleep(BEACON_INTERVAL);
+	k_sleep(K_SECONDS(BEACON_INTERVAL));
 
 	ASSERT_TRUE(atomic_test_bit(bt_mesh.flags, BT_MESH_IVU_IN_PROGRESS));
 	ASSERT_TRUE(bt_mesh.iv_index == 1);
 	ivu_log();
 
-	k_sleep(BEACON_INTERVAL);
+	k_sleep(K_SECONDS(BEACON_INTERVAL));
 
 	ASSERT_TRUE(!atomic_test_bit(bt_mesh.flags, BT_MESH_IVU_IN_PROGRESS));
 	ASSERT_TRUE(bt_mesh.iv_index == 1);
 	ivu_log();
 
-	k_sleep(BEACON_INTERVAL);
+	k_sleep(K_SECONDS(BEACON_INTERVAL));
 
 	ASSERT_TRUE(atomic_test_bit(bt_mesh.flags, BT_MESH_IVU_IN_PROGRESS));
 	ASSERT_TRUE(bt_mesh.iv_index == 2);
@@ -176,7 +176,7 @@ static void test_tx_on_key_refresh(void)
 	ASSERT_TRUE(status == STATUS_SUCCESS);
 	ASSERT_TRUE(phase == BT_MESH_KR_PHASE_1);
 
-	k_sleep(BEACON_INTERVAL);
+	k_sleep(K_SECONDS(BEACON_INTERVAL));
 
 	phase = BT_MESH_KR_PHASE_2;
 	status = bt_mesh_subnet_kr_phase_set(BT_MESH_KEY_PRIMARY, &phase);
@@ -185,7 +185,7 @@ static void test_tx_on_key_refresh(void)
 	ASSERT_TRUE(status == STATUS_SUCCESS);
 	ASSERT_TRUE(phase == BT_MESH_KR_PHASE_2);
 
-	k_sleep(BEACON_INTERVAL);
+	k_sleep(K_SECONDS(BEACON_INTERVAL));
 
 	phase = BT_MESH_KR_PHASE_3;
 	status = bt_mesh_subnet_kr_phase_set(BT_MESH_KEY_PRIMARY, &phase);
@@ -194,7 +194,7 @@ static void test_tx_on_key_refresh(void)
 	ASSERT_TRUE(status == STATUS_SUCCESS);
 	ASSERT_TRUE(phase == BT_MESH_KR_NORMAL);
 
-	k_sleep(BEACON_INTERVAL);
+	k_sleep(K_SECONDS(BEACON_INTERVAL));
 
 	PASS();
 }
@@ -224,19 +224,19 @@ static void test_rx_on_key_refresh(void)
 	ASSERT_TRUE(status == STATUS_SUCCESS);
 	ASSERT_TRUE(phase == BT_MESH_KR_PHASE_1);
 
-	k_sleep(BEACON_INTERVAL);
+	k_sleep(K_SECONDS(BEACON_INTERVAL));
 
 	status = bt_mesh_subnet_kr_phase_get(BT_MESH_KEY_PRIMARY, &phase);
 	ASSERT_TRUE(status == STATUS_SUCCESS);
 	ASSERT_TRUE(phase == BT_MESH_KR_PHASE_1);
 
-	k_sleep(BEACON_INTERVAL);
+	k_sleep(K_SECONDS(BEACON_INTERVAL));
 
 	status = bt_mesh_subnet_kr_phase_get(BT_MESH_KEY_PRIMARY, &phase);
 	ASSERT_TRUE(status == STATUS_SUCCESS);
 	ASSERT_TRUE(phase == BT_MESH_KR_PHASE_2);
 
-	k_sleep(BEACON_INTERVAL);
+	k_sleep(K_SECONDS(BEACON_INTERVAL));
 
 	status = bt_mesh_subnet_kr_phase_get(BT_MESH_KEY_PRIMARY, &phase);
 	ASSERT_TRUE(status == STATUS_SUCCESS);
@@ -295,8 +295,16 @@ static bool wait_for_beacon(bool (*process_cb)(const uint8_t *net_id, void *ctx)
 		FAIL("starting scan failed (err %d)", err);
 	}
 
-	/* Listen to beacons ONLY for one beacon interval. */
-	err = k_sem_take(&observer_sem, BEACON_INTERVAL);
+	/* Listen to beacons ONLY for one beacon interval.
+	 * Tests start quite often the waiting for the next beacon after
+	 * transmission or receiving the previous one. If start waiting timer
+	 * for BEACON_INTERVAL interval then timer expiration and receiving of
+	 * the beacon happen about the same time. That is possible unstable behavior
+	 * or failing some tests. To avoid this it is worth to add 1 second to
+	 * waiting time (BEACON_INTERVAL + 1) to guarantee that beacon comes
+	 * before timer expiration.
+	 */
+	err = k_sem_take(&observer_sem, K_SECONDS(BEACON_INTERVAL + 1));
 	if (!err) {
 		received = true;
 	} else {
@@ -312,7 +320,9 @@ static bool wait_for_beacon(bool (*process_cb)(const uint8_t *net_id, void *ctx)
 	 * again will catch the old beacon. This happens due to a known bug in legacy advertiser,
 	 * which transmits advertisements longer than should.
 	 */
-	k_sleep(K_SECONDS(1));
+	if (received && IS_ENABLED(CONFIG_BT_MESH_ADV_LEGACY)) {
+		k_sleep(K_SECONDS(1));
+	}
 
 	return received;
 }
@@ -469,8 +479,7 @@ static void test_rx_invalid(void)
 		ASSERT_FALSE(atomic_test_bit(bt_mesh.flags, BT_MESH_IVU_IN_PROGRESS));
 		ASSERT_EQUAL(0, bt_mesh.iv_index);
 
-		/* (BEACON_INTERVAL + 1) * 2 */
-		k_sleep(K_SECONDS(22));
+		k_sleep(K_SECONDS((BEACON_INTERVAL + 1) * 2));
 	}
 
 	/* Only the last beacon shall change IV Update state. */
@@ -586,7 +595,7 @@ static void test_rx_kr_old_key(void)
 	bt_mesh_test_setup();
 	bt_mesh_iv_update_test(true);
 
-	err = bt_mesh_cfg_net_key_update(0, cfg->addr, 0, test_net_key_secondary, &status);
+	err = bt_mesh_cfg_cli_net_key_update(0, cfg->addr, 0, test_net_key_secondary, &status);
 	if (err || status) {
 		FAIL("Net Key update failed (err %d, status %u)", err, status);
 	}
@@ -625,8 +634,7 @@ static void test_rx_kr_old_key(void)
 								 BT_MESH_IVU_IN_PROGRESS));
 		ASSERT_EQUAL(test_vector[i].ivi, bt_mesh.iv_index);
 
-		/* (BEACON_INTERVAL + 1) * 2 */
-		k_sleep(K_SECONDS(22));
+		k_sleep(K_SECONDS((BEACON_INTERVAL + 1) * 2));
 	}
 
 	PASS();
@@ -769,14 +777,14 @@ static void test_rx_multiple_netkeys(void)
 	 * Refresh procedure.
 	 */
 	for (size_t i = 0; i < ARRAY_SIZE(net_key_pairs); i++) {
-		err = bt_mesh_cfg_net_key_add(0, cfg->addr, i + 1, net_key_pairs[i].primary,
+		err = bt_mesh_cfg_cli_net_key_add(0, cfg->addr, i + 1, net_key_pairs[i].primary,
 					      &status);
 		if (err || status) {
 			FAIL("Net Key add failed (err %d, status %u)", err, status);
 		}
 
-		err = bt_mesh_cfg_net_key_update(0, cfg->addr, i + 1, net_key_pairs[i].secondary,
-						 &status);
+		err = bt_mesh_cfg_cli_net_key_update(0, cfg->addr, i + 1,
+						     net_key_pairs[i].secondary, &status);
 		if (err || status) {
 			FAIL("Net Key update failed (err %d, status %u)", err, status);
 		}
@@ -808,6 +816,93 @@ static void test_rx_multiple_netkeys(void)
 
 }
 
+static struct k_work_delayable beacon_timer;
+
+static void secure_beacon_send(struct k_work *work)
+{
+	NET_BUF_SIMPLE_DEFINE(buf, 22);
+	beacon_create(&buf, test_net_key, 0, 0);
+	send_beacon(&buf);
+	/**
+	 * Sending SNB(secure network beacon) faster to guarantee
+	 * at least one beacon is received by tx node in 10s period.
+	 */
+	k_work_schedule(&beacon_timer, K_SECONDS(4));
+}
+
+static void test_tx_secure_beacon_interval(void)
+{
+	bt_mesh_test_cfg_set(&tx_cfg, 750);
+	k_sleep(K_SECONDS(2));
+	bt_mesh_test_setup();
+	PASS();
+}
+
+static void test_rx_secure_beacon_interval(void)
+{
+	NET_BUF_SIMPLE_DEFINE(buf, 22);
+	int err;
+	int64_t beacon_recv_time;
+	int64_t delta;
+
+	bt_mesh_test_cfg_set(&rx_cfg, 750);
+	k_sem_init(&observer_sem, 0, 1);
+	k_work_init_delayable(&beacon_timer, secure_beacon_send);
+
+	err = bt_enable(NULL);
+	if (err) {
+		FAIL("Bluetooth init failed (err %d)", err);
+	}
+
+	beacon_create(&buf, test_net_key, 0, 0);
+	k_sleep(K_SECONDS(5));
+	/*wait provisioned tx node to send the first beacon*/
+	ASSERT_TRUE(wait_for_beacon(NULL, NULL));
+	k_sleep(K_SECONDS(2));
+
+	/**
+	 * Sending 2 SNB 20ms apart by only sending for even values of loop variable.
+	 * And verify that tx node adapts to 20ms SNB interval after sending enough
+	 * beacons in for loop.
+	 */
+	for (size_t i = 1; i < 5; i++) {
+		if (i % 2) {
+			send_beacon(&buf);
+			ASSERT_FALSE(wait_for_beacon(NULL, NULL));
+		} else {
+			ASSERT_TRUE(wait_for_beacon(NULL, NULL));
+		}
+	}
+
+	/**
+	 * Verify that tx node keeps the 20ms SNB interval until adapts itself and
+	 * sends SNB in 10s again.
+	 */
+	ASSERT_FALSE(wait_for_beacon(NULL, NULL));
+	ASSERT_TRUE(wait_for_beacon(NULL, NULL));
+	ASSERT_TRUE(wait_for_beacon(NULL, NULL));
+	beacon_recv_time = k_uptime_get();
+	/* Start sending SNB */
+	k_work_schedule(&beacon_timer, K_NO_WAIT);
+
+	/**
+	 * Send SNB so that the tx node stays silent and eventually sends
+	 * an SNB after 600s, which is the maximum time for SNB interval.
+	 * Sending beacon with 4sec interval, therefore 150 beacons are enough
+	 * to cover 600s and +1 is to be sure that we push the boundary.
+	 */
+	delta = 0;
+	for (size_t i = 0; i < 151; i++) {
+		if (wait_for_beacon(NULL, NULL)) {
+			delta = k_uptime_delta(&beacon_recv_time);
+			break;
+		}
+	}
+
+	ASSERT_TRUE(delta >= (600 * MSEC_PER_SEC));
+	PASS();
+}
+
 #define TEST_CASE(role, name, description)                     \
 	{                                                      \
 		.test_id = "beacon_" #role "_" #name,          \
@@ -823,12 +918,14 @@ static const struct bst_test_instance test_beacon[] = {
 	TEST_CASE(tx, invalid, "Beacon: send invalid beacon"),
 	TEST_CASE(tx, kr_old_key, "Beacon: send old Net Key"),
 	TEST_CASE(tx, multiple_netkeys, "Beacon: multiple Net Keys"),
+	TEST_CASE(tx, secure_beacon_interval, "Beacon: send secure beacons"),
 
 	TEST_CASE(rx, on_iv_update,   "Beacon: receive with IV update flag"),
 	TEST_CASE(rx, on_key_refresh,  "Beacon: receive with key refresh flag"),
 	TEST_CASE(rx, invalid, "Beacon: receive invalid beacon"),
 	TEST_CASE(rx, kr_old_key, "Beacon: receive old Net Key"),
 	TEST_CASE(rx, multiple_netkeys, "Beacon: multiple Net Keys"),
+	TEST_CASE(rx, secure_beacon_interval, "Beacon: receive and send secure beacons"),
 	BSTEST_END_MARKER
 };
 

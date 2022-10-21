@@ -18,9 +18,13 @@ extern "C" {
 
 unsigned long strtoul(const char *nptr, char **endptr, int base);
 long strtol(const char *nptr, char **endptr, int base);
+unsigned long long strtoull(const char *nptr, char **endptr, int base);
+long long strtoll(const char *nptr, char **endptr, int base);
 int atoi(const char *s);
 
 void *malloc(size_t size);
+void *aligned_alloc(size_t alignment, size_t size); /* From C11 */
+
 void free(void *ptr);
 void *calloc(size_t nmemb, size_t size);
 void *realloc(void *ptr, size_t size);
@@ -46,6 +50,7 @@ void abort(void);
 
 #ifdef CONFIG_MINIMAL_LIBC_RAND
 #define RAND_MAX INT_MAX
+int rand_r(unsigned int *seed);
 int rand(void);
 void srand(unsigned int seed);
 #endif /* CONFIG_MINIMAL_LIBC_RAND */

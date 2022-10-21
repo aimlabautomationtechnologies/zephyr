@@ -6,9 +6,10 @@
  */
 #include <string.h>
 
+#include <zephyr/arch/cpu.h>
 #include <zephyr/types.h>
-#include <sys/byteorder.h>
-#include <drivers/entropy.h>
+#include <zephyr/sys/byteorder.h>
+#include <zephyr/drivers/entropy.h>
 
 #include "util.h"
 #include "util/memq.h"
