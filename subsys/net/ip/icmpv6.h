@@ -73,11 +73,11 @@ struct net_icmpv6_nd_opt_6co {
 struct net_icmpv6_nd_opt_route_info {
 	uint8_t prefix_len;
 	struct {
-#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+#ifdef CONFIG_LITTLE_ENDIAN
 		uint8_t reserved_2 :3;
 		uint8_t prf        :2;
 		uint8_t reserved_1 :3;
-#elif __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+#else
 		uint8_t reserved_1 :3;
 		uint8_t prf        :2;
 		uint8_t reserved_2 :3;
@@ -85,6 +85,14 @@ struct net_icmpv6_nd_opt_route_info {
 	} flags;
 	uint32_t route_lifetime;
 	/* Variable-length prefix field follows, can be 0, 8 or 16 bytes
+	 * depending on the option length.
+	 */
+} __packed;
+
+struct net_icmpv6_nd_opt_rdnss {
+	uint16_t reserved;
+	uint32_t lifetime;
+	/* Variable-length DNS server address follows,
 	 * depending on the option length.
 	 */
 } __packed;
@@ -201,8 +209,10 @@ int net_icmpv6_send_error(struct net_pkt *pkt, uint8_t type, uint8_t code,
  * @param tc IPv6 Traffic Class field value. Represents combined DSCP and
  * ECN values.
  * @param data Arbitrary payload data that will be included in the
- * Echo Reply verbatim. May be zero.
- * @param data_size Size of the Payload Data in bytes. May be zero.
+ * Echo Reply verbatim. May be NULL.
+ * @param data_size Size of the Payload Data in bytes. May be zero. In case data
+ * pointer is NULL, the function will generate the payload up to the requested
+ * size.
  *
  * @return Return 0 if the sending succeed, <0 otherwise.
  */

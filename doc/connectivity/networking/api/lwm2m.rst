@@ -234,7 +234,7 @@ The Zephyr LwM2M library implements the following items:
 
 * engine to process networking events and core functions
 * RD client which performs BOOTSTRAP and REGISTRATION functions
-* TLV, JSON, and plain text formatting functions
+* SenML CBOR, SenML JSON, CBOR, TLV, JSON, and plain text formatting functions
 * LwM2M Technical Specification Enabler objects such as Security, Server,
   Device, Firmware Update, etc.
 * Extended IPSO objects such as Light Control, Temperature Sensor, and Timer
@@ -255,7 +255,7 @@ To use the LwM2M library, start by creating an LwM2M client context
 	/* LwM2M client context */
 	static struct lwm2m_ctx client;
 
-Create callback functions for LwM2M resource exuctions:
+Create callback functions for LwM2M resource executions:
 
 .. code-block:: c
 
@@ -331,29 +331,29 @@ to connect as well as set the ``Manufacturer`` and ``Reboot`` resources in the
 	 * Server URL of default Security object = 0/0/0
 	 * Use leshan.eclipse.org server IP (5.39.83.206) for connection
 	 */
-	lwm2m_engine_set_string("0/0/0", "coap://5.39.83.206");
+	lwm2m_set_string(&LWM2M_OBJ(0, 0, 0), "coap://5.39.83.206");
 
 	/*
 	 * Security Mode of default Security object = 0/0/2
 	 * 3 = NoSec mode (no security beware!)
 	 */
-	lwm2m_engine_set_u8("0/0/2", 3);
+	lwm2m_set_u8(&LWM2M_OBJ(0, 0, 2), 3);
 
 	#define CLIENT_MANUFACTURER "Zephyr Manufacturer"
 
 	/*
 	 * Manufacturer resource of Device object = 3/0/0
-	 * We use lwm2m_engine_set_res_data() function to set a pointer to the
+	 * We use lwm2m_set_res_data() function to set a pointer to the
 	 * CLIENT_MANUFACTURER string.
 	 * Note the LWM2M_RES_DATA_FLAG_RO flag which stops the engine from
 	 * trying to assign a new value to the buffer.
 	 */
-	lwm2m_engine_set_res_data("3/0/0", CLIENT_MANUFACTURER,
-				  sizeof(CLIENT_MANUFACTURER),
-				  LWM2M_RES_DATA_FLAG_RO);
+	lwm2m_set_res_data(&LWM2M_OBJ(3, 0, 0), CLIENT_MANUFACTURER,
+			   sizeof(CLIENT_MANUFACTURER),
+			   LWM2M_RES_DATA_FLAG_RO);
 
 	/* Reboot resource of Device object = 3/0/4 */
-	lwm2m_engine_register_exec_callback("3/0/4", device_reboot_cb);
+	lwm2m_register_exec_callback(&LWM2M_OBJ(3, 0, 4), device_reboot_cb);
 
 Lastly, we start the LwM2M RD client (which in turn starts the LwM2M engine).
 The second parameter of :c:func:`lwm2m_rd_client_start` is the client
@@ -391,13 +391,13 @@ resource.  Lastly, set the client identity and PSK resources.
 .. code-block:: c
 
 	/* Use coaps:// for server URL protocol */
-	lwm2m_engine_set_string("0/0/0", "coaps://5.39.83.206");
+	lwm2m_set_string(&LWM2M_OBJ(0, 0, 0), "coaps://5.39.83.206");
 	/* 0 = Pre-Shared Key mode */
-	lwm2m_engine_set_u8("0/0/2", 0);
+	lwm2m_set_u8(&LWM2M_OBJ(0, 0, 2), 0);
 	/* Set the client identity */
-	lwm2m_engine_set_string("0/0/3", (char *)client_identity);
+	lwm2m_set_string(&LWM2M_OBJ(0, 0, 3), (char *)client_identity);
 	/* Set the client pre-shared key (PSK) */
-	lwm2m_engine_set_opaque("0/0/5", (void *)client_psk, sizeof(client_psk));
+	lwm2m_set_opaque(&LWM2M_OBJ(0, 0, 5), (void *)client_psk, sizeof(client_psk));
 
 Before calling :c:func:`lwm2m_rd_client_start` assign the tls_tag # where the
 LwM2M library should store the DTLS information prior to connection (normally a
@@ -413,16 +413,16 @@ For a more detailed LwM2M client sample see: :ref:`lwm2m-client-sample`.
 
 Multi-thread usage
 ******************
-Writing a value to a resource can be done using functions like lwm2m_engine_set_u8. When writing
+Writing a value to a resource can be done using functions like lwm2m_set_u8. When writing
 to multiple resources, the function lwm2m_registry_lock will ensure that the
 client halts until all writing operations are finished:
 
 .. code-block:: c
 
   lwm2m_registry_lock();
-  lwm2m_engine_set_u32("1/0/1", 60);
-  lwm2m_engine_set_u8("5/0/3", 0);
-  lwm2m_engine_set_float("3303/0/5700", &value);
+  lwm2m_set_u32(&LWM2M_OBJ(1, 0, 1), 60);
+  lwm2m_set_u8(&LWM2M_OBJ(5, 0, 3), 0);
+  lwm2m_set_f64(&LWM2M_OBJ(3303, 0, 5700), value);
   lwm2m_registry_unlock();
 
 This is especially useful if the server is composite-observing the resources being
@@ -478,9 +478,9 @@ Read and Write operations
 Full content of data cache is written into a payload when any READ, SEND or NOTIFY operation
 internally reads the content of a given resource. This has a side effect that any read callbacks
 registered for a that resource are ignored when cache is enabled.
-Data is written into a cache when any of the ``lwm2m_engine_set_*`` functions are called. To filter
+Data is written into a cache when any of the ``lwm2m_set_*`` functions are called. To filter
 the data entering the cache, application may register a validation callback using
-:c:func:`lwm2m_engine_register_validate_callback`.
+:c:func:`lwm2m_register_validate_callback`.
 
 Limitations
 ===========
@@ -575,6 +575,57 @@ The events are prefixed with ``LWM2M_RD_CLIENT_EVENT_``.
        If sending a message fails, it will be retried.
        If the retry counter reaches its limits, this event will be triggered.
      - No actions needed, client will do a re-registrate automatically.
+
+.. _lwm2m_shell:
+
+LwM2M shell
+***********
+For testing the client it is possible to enable Zephyr's shell and LwM2M specific commands which
+support changing the state of the client. Operations supported are read, write and execute
+resources. Client start, stop, pause and resume are also available. The feature is enabled by
+selecting :kconfig:option:`CONFIG_LWM2M_SHELL`. The shell is meant for testing so productions
+systems should not enable it.
+
+One imaginable scenario, where to use the shell, would be executing client side actions over UART
+when a server side tests would require those. It is assumed that not all tests are able to trigger
+required actions from the server side.
+
+.. code-block:: console
+
+   uart:~$ lwm2m
+   lwm2m - LwM2M commands
+   Subcommands:
+   exec    :Execute a resource
+            exec PATH
+
+   read    :Read value from LwM2M resource
+            read PATH [OPTIONS]
+            -s   Read value as string (default)
+            -b   Read value as bool (1/0)
+            -uX  Read value as uintX_t
+            -sX  Read value as intX_t
+            -f   Read value as float
+
+   write   :Write into LwM2M resource
+            write PATH [OPTIONS] VALUE
+            -s   Value as string (default)
+            -b   Value as bool
+            -uX  Value as uintX_t
+            -sX  Value as intX_t
+            -f   Value as float
+
+   start   :Start the LwM2M RD (Registration / Discovery) Client
+            start EP_NAME [BOOTSTRAP FLAG]
+            -b   Set the bootstrap flag (default 0)
+
+   stop    :Stop the LwM2M RD (De-register) Client
+            stop [OPTIONS]
+            -f   Force close the connection
+
+   update  :Trigger Registration Update of the LwM2M RD Client
+
+   pause   :LwM2M engine thread pause
+   resume  :LwM2M engine thread resume
 
 
 .. _lwm2m_api_reference:

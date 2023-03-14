@@ -18,6 +18,7 @@
  */
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/hci_err.h>
@@ -299,8 +300,20 @@ struct bt_conn_le_info {
 #endif /* defined(CONFIG_BT_USER_DATA_LEN_UPDATE) */
 };
 
-/* Multiply bt 1.25 to get MS */
-#define BT_CONN_INTERVAL_TO_MS(interval) ((interval) * 5 / 4)
+/** @brief Convert connection interval to milliseconds
+ *
+ *  Multiply by 1.25 to get milliseconds.
+ *
+ *  Note that this may be inaccurate, as something like 7.5 ms cannot be
+ *  accurately presented with integers.
+ */
+#define BT_CONN_INTERVAL_TO_MS(interval) ((interval) * 5U / 4U)
+
+/** @brief Convert connection interval to microseconds
+ *
+ *  Multiply by 1250 to get microseconds.
+ */
+#define BT_CONN_INTERVAL_TO_US(interval) ((interval) * 1250U)
 
 /** BR/EDR Connection Info Structure */
 struct bt_conn_br_info {
@@ -452,6 +465,19 @@ struct bt_conn_le_tx_power {
 
 	/** Output: maximum transmit power level */
 	int8_t max_level;
+};
+
+/** @brief Passkey Keypress Notification type
+ *
+ *  The numeric values are the same as in the Core specification for Pairing
+ *  Keypress Notification PDU.
+ */
+enum bt_conn_auth_keypress {
+	BT_CONN_AUTH_KEYPRESS_ENTRY_STARTED = 0x00,
+	BT_CONN_AUTH_KEYPRESS_DIGIT_ENTERED = 0x01,
+	BT_CONN_AUTH_KEYPRESS_DIGIT_ERASED = 0x02,
+	BT_CONN_AUTH_KEYPRESS_CLEARED = 0x03,
+	BT_CONN_AUTH_KEYPRESS_ENTRY_COMPLETED = 0x04,
 };
 
 /** @brief Get connection info
@@ -660,11 +686,6 @@ struct bt_conn_le_create_param {
  *
  *  The application must disable explicit scanning before initiating
  *  a new LE connection.
- *
- *  When @kconfig{CONFIG_BT_PRIVACY} enabled and @p peer is an identity address
- *  from a local bond, this API will connect to an advertisement with either:
- *    - the address being an RPA resolved from the IRK obtained during bonding.
- *    - the passed identity address, if the local identity is not in Network Privacy Mode.
  *
  *  @param[in]  peer         Remote address.
  *  @param[in]  create_param Create connection parameters.
@@ -1216,6 +1237,32 @@ struct bt_conn_auth_cb {
 	 */
 	void (*passkey_display)(struct bt_conn *conn, unsigned int passkey);
 
+#if defined(CONFIG_BT_PASSKEY_KEYPRESS)
+	/** @brief Receive Passkey Keypress Notification during pairing
+	 *
+	 *  This allows the remote device to use the local device to give users
+	 *  feedback on the progress of entering the passkey over there. This is
+	 *  useful when the remote device itself has no display suitable for
+	 *  showing the progress.
+	 *
+	 *  The handler of this callback is expected to keep track of the number
+	 *  of digits entered and show a password-field-like feedback to the
+	 *  user.
+	 *
+	 *  This callback is only relevant while the local side does Passkey
+	 *  Display.
+	 *
+	 *  The event type is verified to be in range of the enum. No other
+	 *  sanitization has been done. The remote could send a large number of
+	 *  events of any type in any order.
+	 *
+	 *  @param conn The related connection.
+	 *  @param type Type of event. Verified in range of the enum.
+	 */
+	void (*passkey_display_keypress)(struct bt_conn *conn,
+					 enum bt_conn_auth_keypress type);
+#endif
+
 	/** @brief Request the user to enter a passkey.
 	 *
 	 *  When called the user is expected to enter a passkey. The passkey
@@ -1429,6 +1476,23 @@ int bt_conn_auth_info_cb_unregister(struct bt_conn_auth_info_cb *cb);
  *  @return Zero on success or negative error code otherwise
  */
 int bt_conn_auth_passkey_entry(struct bt_conn *conn, unsigned int passkey);
+
+/** @brief Send Passkey Keypress Notification during pairing
+ *
+ *  This function may be called only after passkey_entry callback from
+ *  bt_conn_auth_cb structure was called.
+ *
+ *  Requires @kconfig{CONFIG_BT_PASSKEY_KEYPRESS}.
+ *
+ *  @param conn Destination for the notification.
+ *  @param type What keypress event type to send. @see bt_conn_auth_keypress.
+ *
+ *  @retval 0 Success
+ *  @retval -EINVAL Improper use of the API.
+ *  @retval -ENOMEM Failed to allocate.
+ *  @retval -ENOBUFS Failed to allocate.
+ */
+int bt_conn_auth_keypress_notify(struct bt_conn *conn, enum bt_conn_auth_keypress type);
 
 /** @brief Cancel ongoing authenticated pairing.
  *

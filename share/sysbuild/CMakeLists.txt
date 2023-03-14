@@ -1,4 +1,4 @@
-# Copyright (c) 2021 Nordic Semiconductor
+# Copyright (c) 2021-2023 Nordic Semiconductor
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -30,6 +30,24 @@ set(IMAGES)
 get_filename_component(APP_DIR  ${APP_DIR} ABSOLUTE)
 get_filename_component(app_name ${APP_DIR} NAME)
 
+# Include zephyr modules generated sysbuild CMake file.
+foreach(SYSBUILD_CURRENT_MODULE_NAME ${SYSBUILD_MODULE_NAMES})
+  # Note the second, binary_dir parameter requires the added
+  # subdirectory to have its own, local cmake target(s). If not then
+  # this binary_dir is created but stays empty. Object files land in
+  # the main binary dir instead.
+  # https://cmake.org/pipermail/cmake/2019-June/069547.html
+  zephyr_string(SANITIZE TOUPPER MODULE_NAME_UPPER ${SYSBUILD_CURRENT_MODULE_NAME})
+  if(NOT ${SYSBUILD_${MODULE_NAME_UPPER}_CMAKE_DIR} STREQUAL "")
+    set(SYSBUILD_CURRENT_MODULE_DIR ${SYSBUILD_${MODULE_NAME_UPPER}_MODULE_DIR})
+    set(SYSBUILD_CURRENT_CMAKE_DIR ${SYSBUILD_${MODULE_NAME_UPPER}_CMAKE_DIR})
+    add_subdirectory(${SYSBUILD_CURRENT_CMAKE_DIR} ${CMAKE_BINARY_DIR}/modules/${SYSBUILD_CURRENT_MODULE_NAME})
+  endif()
+endforeach()
+# Done processing modules, clear SYSBUILD_CURRENT_MODULE_DIR and SYSBUILD_CURRENT_CMAKE_DIR.
+set(SYSBUILD_CURRENT_MODULE_DIR)
+set(SYSBUILD_CURRENT_CMAKE_DIR)
+
 # Propagate bootloader and signing settings from this system to the MCUboot and
 # application image build systems.
 if(SB_CONFIG_BOOTLOADER_MCUBOOT)
@@ -40,6 +58,12 @@ if(SB_CONFIG_BOOTLOADER_MCUBOOT)
       \"${SB_CONFIG_BOOT_SIGNATURE_KEY_FILE}\" CACHE STRING
       "Signature key file for signing" FORCE
   )
+
+  if(SB_CONFIG_BOOT_SIGNATURE_TYPE_NONE)
+    set(${app_name}_CONFIG_MCUBOOT_GENERATE_UNSIGNED_IMAGE y CACHE STRING
+        "MCUBOOT is configured for checksum mode" FORCE
+    )
+  endif()
 
   # Set corresponding values in mcuboot
   set(mcuboot_CONFIG_BOOT_SIGNATURE_TYPE_${SB_CONFIG_SIGNATURE_TYPE} y CACHE STRING
@@ -68,6 +92,35 @@ add_subdirectory(bootloader)
 
 # This allows for board and app specific images to be included.
 include(${BOARD_DIR}/sysbuild.cmake OPTIONAL)
-include(${APP_DIR}/sysbuild.cmake OPTIONAL)
 
+# This allows image specific sysbuild.cmake to be processed.
+list(LENGTH IMAGES images_length)
+while(NOT "${images_length}" EQUAL "${processed_length}")
+  foreach(image ${IMAGES})
+    if(NOT image IN_LIST images_sysbuild_processed)
+      ExternalProject_Get_property(${image} SOURCE_DIR)
+      include(${SOURCE_DIR}/sysbuild.cmake OPTIONAL)
+      list(APPEND images_sysbuild_processed ${image})
+    endif()
+  endforeach()
+
+  list(LENGTH IMAGES images_length)
+  list(LENGTH images_sysbuild_processed processed_length_new)
+
+  # Check for any duplicate entries in image names to prevent an infinite loop
+  if("${processed_length_new}" EQUAL "${processed_length}")
+    # Image length was different than processed length, but no new images are processed.
+    message(FATAL_ERROR "A duplicate image name was provided, image names must be unique.")
+  endif()
+  set(processed_length ${processed_length_new})
+endwhile()
+
+sysbuild_module_call(PRE_CMAKE MODULES ${SYSBUILD_MODULE_NAMES} IMAGES ${IMAGES})
+foreach(image ${IMAGES})
+  ExternalZephyrProject_Cmake(APPLICATION ${image})
+endforeach()
+sysbuild_module_call(POST_CMAKE MODULES ${SYSBUILD_MODULE_NAMES} IMAGES ${IMAGES})
+
+sysbuild_module_call(PRE_DOMAINS MODULES ${SYSBUILD_MODULE_NAMES} IMAGES ${IMAGES})
 include(cmake/domains.cmake)
+sysbuild_module_call(POST_DOMAINS MODULES ${SYSBUILD_MODULE_NAMES} IMAGES ${IMAGES})

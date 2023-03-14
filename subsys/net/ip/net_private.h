@@ -133,6 +133,11 @@ enum net_verdict net_gptp_recv(struct net_if *iface, struct net_pkt *pkt);
 #define net_gptp_recv(iface, pkt) NET_DROP
 #endif /* CONFIG_NET_GPTP */
 
+#if defined(CONFIG_NET_IPV4_FRAGMENT)
+int net_ipv4_send_fragmented_pkt(struct net_if *iface, struct net_pkt *pkt,
+				 uint16_t pkt_len, uint16_t mtu);
+#endif
+
 #if defined(CONFIG_NET_IPV6_FRAGMENT)
 int net_ipv6_send_fragmented_pkt(struct net_if *iface, struct net_pkt *pkt,
 				 uint16_t pkt_len);
@@ -142,6 +147,7 @@ extern const char *net_proto2str(int family, int proto);
 extern char *net_byte_to_hex(char *ptr, uint8_t byte, char base, bool pad);
 extern char *net_sprint_ll_addr_buf(const uint8_t *ll, uint8_t ll_len,
 				    char *buf, int buflen);
+extern uint16_t calc_chksum(uint16_t sum_in, const uint8_t *data, size_t len);
 extern uint16_t net_calc_chksum(struct net_pkt *pkt, uint8_t proto);
 
 /**
@@ -166,6 +172,15 @@ enum net_verdict net_context_packet_received(struct net_conn *conn,
 #if defined(CONFIG_NET_IPV4)
 extern uint16_t net_calc_chksum_ipv4(struct net_pkt *pkt);
 #endif /* CONFIG_NET_IPV4 */
+
+#if defined(CONFIG_NET_IPV4_IGMP)
+/**
+ * @brief Initialise the IGMP module for a given interface
+ *
+ * @param iface		Interface to init IGMP
+ */
+void net_ipv4_igmp_init(struct net_if *iface);
+#endif /* CONFIG_NET_IPV4_IGMP */
 
 #if defined(CONFIG_NET_IPV4_IGMP)
 uint16_t net_calc_chksum_igmp(uint8_t *data, size_t len);

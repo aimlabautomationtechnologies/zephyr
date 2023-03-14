@@ -18,6 +18,7 @@ jobs:
         id: get_version
         run: |
           echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          echo "TRIMMED_VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
       - name: REUSE Compliance Check
         uses: fsfe/reuse-action@v1
@@ -26,7 +27,7 @@ jobs:
 
       - name: upload-results
         uses: actions/upload-artifact@v3
-        continue-on-error: True
+        continue-on-error: true
         with:
           name: zephyr-${{ steps.get_version.outputs.VERSION }}.spdx
           path: zephyr-${{ steps.get_version.outputs.VERSION }}.spdx
@@ -42,7 +43,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ github.ref }}
-          release_name: Zephyr ${{ github.ref }}
+          release_name: Zephyr ${{ steps.get_version.outputs.TRIMMED_VERSION }}
           body_path: release-notes.txt
           draft: true
           prerelease: true

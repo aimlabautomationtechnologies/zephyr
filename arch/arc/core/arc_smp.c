@@ -15,8 +15,7 @@
 #include <ksched.h>
 #include <zephyr/init.h>
 #include <zephyr/irq.h>
-
-#define MP_PRIMARY_CPU_ID 0
+#include <arc_irq_offload.h>
 
 volatile struct {
 	arch_cpustart_t fn;
@@ -70,7 +69,7 @@ static void arc_connect_debug_mask_update(int cpu_num)
 	 * MDB debugger may modify debug_select and debug_mask registers on start, so we can't
 	 * rely on debug_select reset value.
 	 */
-	if (cpu_num != MP_PRIMARY_CPU_ID) {
+	if (cpu_num != ARC_MP_PRIMARY_CPU_ID) {
 		core_mask |= z_arc_connect_debug_select_read();
 	}
 
@@ -86,6 +85,8 @@ static void arc_connect_debug_mask_update(int cpu_num)
 		| ARC_CONNECT_CMD_DEBUG_MASK_H));
 }
 #endif
+
+void arc_core_private_intc_init(void);
 
 /* the C entry of slave cores */
 void z_arc_slave_start(int cpu_num)
@@ -103,6 +104,10 @@ void z_arc_slave_start(int cpu_num)
 	}
 
 	z_irq_setup();
+
+	arc_core_private_intc_init();
+
+	arc_irq_offload_init_smp();
 
 	z_arc_connect_ici_clear();
 	z_irq_priority_set(DT_IRQN(DT_NODELABEL(ici)),
@@ -133,7 +138,9 @@ void arch_sched_ipi(void)
 	/* broadcast sched_ipi request to other cores
 	 * if the target is current core, hardware will ignore it
 	 */
-	for (i = 0U; i < CONFIG_MP_NUM_CPUS; i++) {
+	unsigned int num_cpus = arch_num_cpus();
+
+	for (i = 0U; i < num_cpus; i++) {
 		z_arc_connect_ici_generate(i);
 	}
 }
@@ -150,7 +157,7 @@ static int arc_smp_init(const struct device *dev)
 
 	if (bcr.dbg) {
 		/* configure inter-core debug unit if available */
-		arc_connect_debug_mask_update(MP_PRIMARY_CPU_ID);
+		arc_connect_debug_mask_update(ARC_MP_PRIMARY_CPU_ID);
 	}
 
 	if (bcr.ipi) {
@@ -172,7 +179,7 @@ static int arc_smp_init(const struct device *dev)
 		z_arc_connect_gfrc_enable();
 
 		/* when all cores halt, gfrc halt */
-		z_arc_connect_gfrc_core_set((1 << CONFIG_MP_NUM_CPUS) - 1);
+		z_arc_connect_gfrc_core_set((1 << arch_num_cpus()) - 1);
 		z_arc_connect_gfrc_clear();
 	} else {
 		__ASSERT(0,

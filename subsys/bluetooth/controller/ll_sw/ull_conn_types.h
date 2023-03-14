@@ -38,7 +38,7 @@ struct ll_conn {
 	struct lll_conn lll;
 
 	uint16_t connect_expire;
-	uint16_t supervision_reload;
+	uint16_t supervision_timeout;
 	uint16_t supervision_expire;
 	uint16_t procedure_reload;
 	uint16_t procedure_expire;
@@ -169,6 +169,7 @@ struct ll_conn {
 			LLCP_CUI_STATE_REJECT,
 		} state:3 __packed;
 		uint8_t  cmd:1;
+		uint8_t  pause_tx:1;
 		uint16_t interval;
 		uint16_t latency;
 		uint16_t timeout;
@@ -242,12 +243,19 @@ struct ll_conn {
 			LLCP_CPR_STATE_OFFS_RDY,
 		} state:4 __packed;
 		uint8_t  cmd:1;
+		uint8_t  remote:1;
 		uint8_t  disabled:1;
 		uint8_t  status;
 		uint16_t interval_min;
 		uint16_t interval_max;
 		uint16_t latency;
 		uint16_t timeout;
+		struct {
+			uint16_t interval_min;
+			uint16_t interval_max;
+			uint16_t latency;
+			uint16_t timeout;
+		} cache;
 		uint8_t  preferred_periodicity;
 		uint16_t reference_conn_event_count;
 		uint16_t offset0;
@@ -404,7 +412,6 @@ struct llcp_struct {
 	 * see BT Core spec 5.2 Vol 6, Part B, sec. 5.1.4
 	 */
 	struct {
-		uint8_t sent;
 		uint8_t valid;
 		/*
 		 * Stores features supported by peer device. The content of the member may be
@@ -537,7 +544,7 @@ struct ll_conn {
 #endif /* CONFIG_BT_CTLR_LE_PING */
 
 	uint16_t connect_expire;
-	uint16_t supervision_reload;
+	uint16_t supervision_timeout;
 	uint16_t supervision_expire;
 	uint32_t connect_accept_to;
 
@@ -597,4 +604,9 @@ struct node_rx_pu {
 	uint8_t status;
 	uint8_t tx;
 	uint8_t rx;
+};
+
+struct node_rx_sca {
+	uint8_t status;
+	uint8_t sca;
 };

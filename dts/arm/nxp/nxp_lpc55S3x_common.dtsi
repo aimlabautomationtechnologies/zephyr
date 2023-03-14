@@ -11,6 +11,10 @@
 #include <mem.h>
 
 / {
+	chosen {
+		zephyr,entropy = &css;
+	};
+
 	cpus {
 		#address-cells = <1>;
 		#size-cells = <0>;
@@ -113,14 +117,6 @@
 		ranges = <0x0 0x1000 0x100>;
 		pinctrl: pinctrl {
 			compatible = "nxp,lpc-iocon-pinctrl";
-		};
-		pio0: pio0@0 {
-			compatible = "nxp,lpc-iocon-pio";
-			reg = <0x0 0x80>;
-		};
-		pio1: pio0@80 {
-			compatible = "nxp,lpc-iocon-pio";
-			reg = <0x80 0x80>;
 		};
 	};
 
@@ -225,6 +221,12 @@
 		#size-cells = <0>;
 	};
 
+	css: css@4003000 {
+		compatible = "nxp,css-v2";
+		reg = <0x4003000 0x200>;
+		status = "okay";
+	};
+
 	can0: can@4009d000 {
 		compatible = "nxp,lpc-mcan";
 		reg = <0x4009d000 0x1000>;
@@ -254,7 +256,7 @@
 			index = <0>;
 			interrupt-names = "COMPARE-SUB0", "RELOAD-SUB0";
 			interrupts = <83 0>, <84 0>;
-			#pwm-cells = <2>;
+			#pwm-cells = <3>;
 			clocks = <&syscon MCUX_BUS_CLK 0 0>;
 			nxp,prescaler = <128>;
 			status = "disabled";
@@ -266,7 +268,7 @@
 			index = <1>;
 			interrupt-names = "COMPARE-SUB1", "RELOAD-SUB1";
 			interrupts = <85 0>, <86 0>;
-			#pwm-cells = <2>;
+			#pwm-cells = <3>;
 			clocks = <&syscon MCUX_BUS_CLK 0 0>;
 			nxp,prescaler = <128>;
 			status = "disabled";
@@ -278,7 +280,7 @@
 			index = <2>;
 			interrupt-names = "COMPARE-SUB2", "RELOAD-SUB2";
 			interrupts = <87 0>, <88 0>;
-			#pwm-cells = <2>;
+			#pwm-cells = <3>;
 			clocks = <&syscon MCUX_BUS_CLK 0 0>;
 			nxp,prescaler = <128>;
 			status = "disabled";
@@ -290,7 +292,7 @@
 			index = <3>;
 			interrupt-names = "COMPARE-SUB3", "RELOAD-SUB3";
 			interrupts = <89 0>, <90 0>;
-			#pwm-cells = <2>;
+			#pwm-cells = <3>;
 			clocks = <&syscon MCUX_BUS_CLK 0 0>;
 			nxp,prescaler = <128>;
 			status = "disabled";
@@ -309,7 +311,7 @@
 			index = <0>;
 			interrupt-names = "COMPARE-SUB0", "RELOAD-SUB0";
 			interrupts = <94 0>, <95 0>;
-			#pwm-cells = <2>;
+			#pwm-cells = <3>;
 			clocks = <&syscon MCUX_BUS_CLK 0 0>;
 			nxp,prescaler = <128>;
 			status = "disabled";
@@ -321,7 +323,7 @@
 			index = <1>;
 			interrupt-names = "COMPARE-SUB1", "RELOAD-SUB1";
 			interrupts = <96 0>, <97 0>;
-			#pwm-cells = <2>;
+			#pwm-cells = <3>;
 			clocks = <&syscon MCUX_BUS_CLK 0 0>;
 			nxp,prescaler = <128>;
 			status = "disabled";
@@ -333,7 +335,7 @@
 			index = <2>;
 			interrupt-names = "COMPARE-SUB2", "RELOAD-SUB2";
 			interrupts = <98 0>, <99 0>;
-			#pwm-cells = <2>;
+			#pwm-cells = <3>;
 			clocks = <&syscon MCUX_BUS_CLK 0 0>;
 			nxp,prescaler = <128>;
 			status = "disabled";
@@ -345,7 +347,7 @@
 			index = <3>;
 			interrupt-names = "COMPARE-SUB3", "RELOAD-SUB3";
 			interrupts = <100 0>, <101 0>;
-			#pwm-cells = <2>;
+			#pwm-cells = <3>;
 			clocks = <&syscon MCUX_BUS_CLK 0 0>;
 			nxp,prescaler = <128>;
 			status = "disabled";
@@ -353,8 +355,14 @@
 		};
 	};
 
-
-
+	sc_timer: pwm@85000 {
+		compatible = "nxp,sctimer-pwm";
+		reg = <0x85000 0x1000>;
+		interrupts = <12 0>;
+		status = "disabled";
+		prescaler = <2>;
+		#pwm-cells = <3>;
+	};
 };
 
 &nvic {

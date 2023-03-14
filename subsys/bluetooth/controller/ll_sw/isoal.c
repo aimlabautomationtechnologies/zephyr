@@ -4,6 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 #include <string.h>
+#include <stdlib.h>
+
 #include <zephyr/types.h>
 #include <sys/types.h>
 #include <zephyr/toolchain.h>
@@ -12,10 +14,16 @@
 #include <zephyr/kernel.h>
 
 #include <zephyr/bluetooth/bluetooth.h>
+#include <zephyr/bluetooth/hci.h>
 
 #include "util/memq.h"
-#include "pdu.h"
 
+#include "hal/ccm.h"
+#include "hal/ticker.h"
+
+#include "pdu_df.h"
+#include "lll/pdu_vendor.h"
+#include "pdu.h"
 
 #include "ll.h"
 #include "lll.h"
@@ -24,8 +32,10 @@
 #include "isoal.h"
 #include "ull_iso_types.h"
 
-#define LOG_MODULE_NAME bt_ctlr_isoal
-#include "common/log.h"
+#include <zephyr/logging/log.h>
+
+LOG_MODULE_REGISTER(bt_ctlr_isoal, LOG_LEVEL_DBG);
+
 #include "hal/debug.h"
 
 #if defined(CONFIG_BT_CTLR_ADV_ISO) || defined(CONFIG_BT_CTLR_CONN_ISO)
@@ -38,6 +48,14 @@
 					   PDU_ISO_SEG_HDR_SIZE +                                  \
 					   PDU_ISO_SEG_TIMEOFFSET_SIZE)
 #endif /* CONFIG_BT_CTLR_ADV_ISO || CONFIG_BT_CTLR_CONN_ISO */
+
+/* Defined the wrapping point and mid point in the range of time input values,
+ * which depend on range of the controller's clock in microseconds.
+ */
+#define ISOAL_TIME_WRAPPING_POINT_US      (HAL_TICKER_TICKS_TO_US(HAL_TICKER_CNTR_MASK))
+#define ISOAL_TIME_MID_POINT_US           (ISOAL_TIME_WRAPPING_POINT_US / 2)
+#define ISOAL_TIME_SPAN_FULL_US           (ISOAL_TIME_WRAPPING_POINT_US + 1)
+#define ISOAL_TIME_SPAN_HALF_US           (ISOAL_TIME_SPAN_FULL_US / 2)
 
 /** Allocation state */
 typedef uint8_t isoal_alloc_state_t;
@@ -87,6 +105,22 @@ isoal_status_t isoal_reset(void)
 	err = isoal_init_reset();
 
 	return err;
+}
+
+/**
+ * @brief Wraps given time within the range of 0 to ISOAL_TIME_WRAPPING_POINT_US
+ * @param  time_now  Current time value
+ * @param  time_diff Time difference (signed)
+ * @return           Wrapped time after difference
+ */
+uint32_t isoal_get_wrapped_time_us(uint32_t time_now_us, int32_t time_diff_us)
+{
+	LL_ASSERT(time_now_us <= ISOAL_TIME_WRAPPING_POINT_US);
+
+	uint32_t result = ((uint64_t)time_now_us + ISOAL_TIME_SPAN_FULL_US + time_diff_us) %
+				((uint64_t)ISOAL_TIME_SPAN_FULL_US);
+
+	return result;
 }
 
 #if defined(CONFIG_BT_CTLR_SYNC_ISO) || defined(CONFIG_BT_CTLR_CONN_ISO)
@@ -176,6 +210,7 @@ isoal_status_t isoal_sink_create(
 	session->handle = handle;
 	session->framed = framed;
 	session->sdu_interval = sdu_interval;
+	session->burst_number = burst_number;
 
 	/* Todo: Next section computing various constants, should potentially be a
 	 * function in itself as a number of the dependencies could be changed while
@@ -256,6 +291,7 @@ isoal_status_t isoal_sink_create(
  */
 struct isoal_sink_config *isoal_get_sink_param_ref(isoal_sink_handle_t hdl)
 {
+	LL_ASSERT(hdl < CONFIG_BT_CTLR_ISOAL_SINKS);
 	LL_ASSERT(isoal_global.sink_allocated[hdl] == ISOAL_ALLOC_STATE_TAKEN);
 
 	return &isoal_global.sink_state[hdl].session.param;
@@ -629,7 +665,7 @@ static isoal_status_t isoal_rx_unframed_consume(struct isoal_sink *sink,
 	/* If status is not ISOAL_PDU_STATUS_VALID, length and LLID cannot be trusted */
 	llid = pdu_meta->pdu->ll_id;
 	pdu_err = (pdu_meta->meta->status != ISOAL_PDU_STATUS_VALID);
-	length = pdu_meta->pdu->length;
+	length = pdu_meta->pdu->len;
 	/* A zero length PDU with LLID 0b01 (PDU_BIS_LLID_START_CONTINUE) would be a padding PDU.
 	 * However if there are errors in the PDU, it could be an incorrectly receive non-padding
 	 * PDU. Therefore only consider a PDU with errors as padding if received after the end
@@ -671,7 +707,8 @@ static isoal_status_t isoal_rx_unframed_consume(struct isoal_sink *sink,
 	if (sp->fsm == ISOAL_START) {
 		struct isoal_sdu_produced *sdu;
 		uint32_t anchorpoint;
-		uint32_t latency;
+		uint16_t sdu_offset;
+		int32_t latency;
 
 		sp->sdu_status = ISOAL_SDU_STATUS_VALID;
 		sp->sdu_state = BT_ISO_START;
@@ -679,12 +716,43 @@ static isoal_status_t isoal_rx_unframed_consume(struct isoal_sink *sink,
 		session->seqn++;
 		seq_err = false;
 
-		/* Todo: anchorpoint must be reference anchor point, should be fixed in LL */
+		/* The incoming time stamp for each PDU is expected to be the
+		 * CIS / BIS reference anchor point. SDU reference point is
+		 * reconstructed by adding the precalculated latency constant.
+		 *
+		 * BT Core V5.3 : Vol 6 Low Energy Controller : Part G IS0-AL:
+		 * 3.2.2 SDU synchronization reference using unframed PDUs:
+		 *
+		 * The CIS reference anchor point is computed excluding any
+		 * retransmissions or missed subevents and shall be set to the
+		 * start of the isochronous event in which the first PDU
+		 * containing the SDU could have been transferred.
+		 *
+		 * The BIG reference anchor point is the anchor point of the BIG
+		 * event that the PDU is associated with.
+		 */
 		anchorpoint = meta->timestamp;
 		latency = session->latency_unframed;
 		sdu = &sp->sdu;
+		sdu->timestamp = isoal_get_wrapped_time_us(anchorpoint, latency);
 
-		sdu->timestamp = anchorpoint + latency;
+		/* If there are multiple SDUs in an ISO interval
+		 * (SDU interval < ISO Interval) every SDU after the first
+		 * should add an SDU interval to the time stamp.
+		 *
+		 * BT Core V5.3 : Vol 6 Low Energy Controller : Part G IS0-AL:
+		 * 3.2.2 SDU synchronization reference using unframed PDUs:
+		 *
+		 * All PDUs belonging to a burst as defined by the configuration
+		 * of BN have the same reference anchor point. When multiple
+		 * SDUs have the same reference anchor point, the first SDU uses
+		 * the reference anchor point timing. Each subsequent SDU
+		 * increases the SDU synchronization reference timing with one
+		 * SDU interval.
+		 */
+		sdu_offset = (meta->payload_number % session->burst_number) / session->pdus_per_sdu;
+		sdu->timestamp = isoal_get_wrapped_time_us(sdu->timestamp,
+					sdu_offset * session->sdu_interval);
 	} else {
 		sp->pdu_cnt++;
 	}
@@ -723,7 +791,7 @@ static isoal_status_t isoal_rx_unframed_consume(struct isoal_sink *sink,
 		} else  {
 			/* Unsupported case */
 			err = ISOAL_STATUS_ERR_UNSPECIFIED;
-			BT_ERR("Invalid unframed LLID (%d)", llid);
+			LOG_ERR("Invalid unframed LLID (%d)", llid);
 			LL_ASSERT(0);
 		}
 		break;
@@ -795,7 +863,7 @@ static isoal_sdu_status_t isoal_check_seg_header(struct pdu_iso_sdu_sh *seg_hdr,
 	}
 
 	if (pdu_size_remaining >= PDU_ISO_SEG_HDR_SIZE &&
-		pdu_size_remaining >= PDU_ISO_SEG_HDR_SIZE + seg_hdr->length) {
+		pdu_size_remaining >= PDU_ISO_SEG_HDR_SIZE + seg_hdr->len) {
 
 		/* Valid if there is sufficient data for the segment header and
 		 * there is sufficient data for the required length of the
@@ -831,8 +899,8 @@ static isoal_status_t isoal_rx_framed_consume(struct isoal_sink *sink,
 	isoal_status_t err;
 	uint8_t next_state;
 	uint32_t timestamp;
-	uint32_t latency;
 	bool pdu_padding;
+	int32_t latency;
 	bool pdu_err;
 	bool seq_err;
 	bool seg_err;
@@ -845,7 +913,7 @@ static isoal_status_t isoal_rx_framed_consume(struct isoal_sink *sink,
 	err = ISOAL_STATUS_OK;
 	next_state = ISOAL_START;
 	pdu_err = (pdu_meta->meta->status != ISOAL_PDU_STATUS_VALID);
-	pdu_padding = (pdu_meta->pdu->length == 0);
+	pdu_padding = (pdu_meta->pdu->len == 0);
 
 	if (sp->fsm == ISOAL_START) {
 		seq_err = false;
@@ -853,12 +921,12 @@ static isoal_status_t isoal_rx_framed_consume(struct isoal_sink *sink,
 		seq_err = (meta->payload_number != (sp->prev_pdu_id + 1));
 	}
 
-	end_of_pdu = ((uint8_t *) pdu_meta->pdu->payload) + pdu_meta->pdu->length - 1;
+	end_of_pdu = ((uint8_t *) pdu_meta->pdu->payload) + pdu_meta->pdu->len - 1;
 	seg_hdr = (pdu_err || seq_err || pdu_padding) ? NULL :
 			(struct pdu_iso_sdu_sh *) pdu_meta->pdu->payload;
 
 	seg_err = false;
-	if (seg_hdr && isoal_check_seg_header(seg_hdr, pdu_meta->pdu->length) ==
+	if (seg_hdr && isoal_check_seg_header(seg_hdr, pdu_meta->pdu->len) ==
 								ISOAL_SDU_STATUS_LOST_DATA) {
 		seg_err = true;
 		seg_hdr = NULL;
@@ -880,7 +948,7 @@ static isoal_status_t isoal_rx_framed_consume(struct isoal_sink *sink,
 			timeoffset = seg_hdr->timeoffset;
 			anchorpoint = meta->timestamp;
 			latency = session->latency_framed;
-			timestamp = anchorpoint + latency - timeoffset;
+			timestamp = isoal_get_wrapped_time_us(anchorpoint, latency - timeoffset);
 
 			if (!sc && !cmplt) {
 				/* The start of a new SDU, where not all SDU data is included in
@@ -925,7 +993,7 @@ static isoal_status_t isoal_rx_framed_consume(struct isoal_sink *sink,
 			timeoffset = seg_hdr->timeoffset;
 			anchorpoint = meta->timestamp;
 			latency = session->latency_framed;
-			timestamp = anchorpoint + latency - timeoffset;
+			timestamp = isoal_get_wrapped_time_us(anchorpoint, latency - timeoffset);
 
 			if (!sc && !cmplt) {
 				/* The start of a new SDU, where not all SDU data is included in
@@ -971,7 +1039,7 @@ static isoal_status_t isoal_rx_framed_consume(struct isoal_sink *sink,
 			 */
 			uint8_t offset = ((uint8_t *) seg_hdr) + PDU_ISO_SEG_HDR_SIZE -
 					 pdu_meta->pdu->payload;
-			uint8_t length = seg_hdr->length;
+			uint8_t length = seg_hdr->len;
 
 			if (!sc) {
 				/* time_offset included in header, don't copy offset field to SDU */
@@ -991,7 +1059,7 @@ static isoal_status_t isoal_rx_framed_consume(struct isoal_sink *sink,
 
 		/* Find next segment header, set to null if past end of PDU */
 		seg_hdr = (struct pdu_iso_sdu_sh *) (((uint8_t *) seg_hdr) +
-						     seg_hdr->length + PDU_ISO_SEG_HDR_SIZE);
+						     seg_hdr->len + PDU_ISO_SEG_HDR_SIZE);
 
 		if (((uint8_t *) seg_hdr) > end_of_pdu) {
 			seg_hdr = NULL;
@@ -1040,7 +1108,7 @@ static isoal_status_t isoal_rx_framed_consume(struct isoal_sink *sink,
 				 */
 				anchorpoint = meta->timestamp;
 				latency = session->latency_framed;
-				timestamp = anchorpoint + latency;
+				timestamp = isoal_get_wrapped_time_us(anchorpoint, latency);
 
 				sdu->timestamp = timestamp;
 			} else {
@@ -1088,6 +1156,53 @@ isoal_status_t isoal_rx_pdu_recombine(isoal_sink_handle_t sink_hdl,
 #endif /* CONFIG_BT_CTLR_SYNC_ISO || CONFIG_BT_CTLR_CONN_ISO */
 
 #if defined(CONFIG_BT_CTLR_ADV_ISO) || defined(CONFIG_BT_CTLR_CONN_ISO)
+/**
+ * @brief Check if a time difference calculation is valid and return the difference.
+ * @param  time_before Subtrahend
+ * @param  time_after  Minuend
+ * @param  result      Difference if valid
+ * @return             Validity - valid if time_after leads time_before with
+ *                                consideration for wrapping such that the
+ *                                difference can be calculated.
+ */
+static bool isoal_get_time_diff(uint32_t time_before, uint32_t time_after, uint32_t *result)
+{
+	bool valid = false;
+
+	LL_ASSERT(time_before <= ISOAL_TIME_WRAPPING_POINT_US);
+	LL_ASSERT(time_after <= ISOAL_TIME_WRAPPING_POINT_US);
+
+	if (time_before > time_after) {
+		if (time_before >= ISOAL_TIME_MID_POINT_US &&
+			time_after <= ISOAL_TIME_MID_POINT_US) {
+			if ((time_before - time_after) <=  ISOAL_TIME_SPAN_HALF_US) {
+				/* Time_before is after time_after and the result is invalid. */
+			} else {
+				/* time_after has wrapped */
+				*result = time_after + ISOAL_TIME_SPAN_FULL_US - time_before;
+				valid = true;
+			}
+		}
+
+		/* Time_before is after time_after and the result is invalid. */
+	} else {
+		/* Time_before <= time_after */
+		*result = time_after - time_before;
+		if (*result <=  ISOAL_TIME_SPAN_HALF_US) {
+			/* result is valid  if it is within half the maximum
+			 * time span.
+			 */
+			valid = true;
+		} else {
+			/* time_before has wrapped and the calculation is not
+			 * valid as time_before is ahead of time_after.
+			 */
+		}
+	}
+
+	return valid;
+}
+
 /**
  * @brief Find free source from statically-sized pool and allocate it
  * @details Implemented as linear search since pool is very small
@@ -1148,7 +1263,7 @@ static isoal_status_t isoal_check_source_hdl_valid(isoal_source_handle_t hdl)
 		return ISOAL_STATUS_OK;
 	}
 
-	BT_ERR("Invalid source handle (0x%02x)", hdl);
+	LOG_ERR("Invalid source handle (0x%02x)", hdl);
 
 	return ISOAL_STATUS_ERR_UNSPECIFIED;
 }
@@ -1239,6 +1354,7 @@ isoal_status_t isoal_source_create(
  */
 struct isoal_source_config *isoal_get_source_param_ref(isoal_source_handle_t hdl)
 {
+	LL_ASSERT(hdl < CONFIG_BT_CTLR_ISOAL_SOURCES);
 	LL_ASSERT(isoal_global.source_allocated[hdl] == ISOAL_ALLOC_STATE_TAKEN);
 
 	return &isoal_global.source_state[hdl].session.param;
@@ -1314,13 +1430,18 @@ static isoal_status_t isoal_tx_pdu_emit(const struct isoal_source *source_ctx,
 
 	/* Retrieve Node handle */
 	node_tx = produced_pdu->contents.handle;
+	/* Under race condition with isoal_source_deallocate() */
+	if (!node_tx) {
+		return ISOAL_STATUS_ERR_PDU_EMIT;
+	}
+
 	/* Set payload number */
 	node_tx->payload_count = payload_number & 0x7fffffffff;
 	node_tx->sdu_fragments = sdu_fragments;
 	/* Set PDU LLID */
 	produced_pdu->contents.pdu->ll_id = pdu_ll_id;
 	/* Set PDU length */
-	produced_pdu->contents.pdu->length = (uint8_t)payload_size;
+	produced_pdu->contents.pdu->len = (uint8_t)payload_size;
 
 	/* Attempt to enqueue the node towards the LL */
 	status = source_ctx->session.pdu_emit(node_tx, handle);
@@ -1329,7 +1450,7 @@ static isoal_status_t isoal_tx_pdu_emit(const struct isoal_source *source_ctx,
 		/* If it fails, the node will be released and no further attempt
 		 * will be possible
 		 */
-		BT_ERR("Failed to enqueue node (%p)", node_tx);
+		LOG_ERR("Failed to enqueue node (%p)", node_tx);
 		source_ctx->session.pdu_release(node_tx, handle, status);
 	}
 
@@ -1421,7 +1542,6 @@ static isoal_status_t isoal_tx_try_emit_pdu(struct isoal_source *source,
 	return err;
 }
 
-
 /**
  * @brief Fragment received SDU and produce unframed PDUs
  * @details Destination source may have an already partially built PDU
@@ -1500,7 +1620,7 @@ static isoal_status_t isoal_tx_unframed_produce(struct isoal_source *source,
 		 * the reference point will cause it to wrap around.
 		 */
 		if (actual_event > tx_sdu->target_event) {
-			actual_grp_ref_point = (uint32_t)(tx_sdu->grp_ref_point +
+			actual_grp_ref_point = isoal_get_wrapped_time_us(tx_sdu->grp_ref_point,
 				((actual_event - tx_sdu->target_event) * session->iso_interval *
 					ISO_INT_UNIT_US));
 		}
@@ -1658,7 +1778,7 @@ static isoal_status_t isoal_insert_seg_header_timeoffset(struct isoal_source *so
 
 	seg_hdr.sc = sc;
 	seg_hdr.cmplt = cmplt;
-	seg_hdr.length = sc ? 0 : PDU_ISO_SEG_TIMEOFFSET_SIZE;
+	seg_hdr.len = sc ? 0 : PDU_ISO_SEG_TIMEOFFSET_SIZE;
 
 	if (!sc) {
 		seg_hdr.timeoffset = time_offset;
@@ -1666,7 +1786,7 @@ static isoal_status_t isoal_insert_seg_header_timeoffset(struct isoal_source *so
 
 	/* Store header */
 	pp->seg_hdr_sc = seg_hdr.sc;
-	pp->seg_hdr_length = seg_hdr.length;
+	pp->seg_hdr_length = seg_hdr.len;
 
 	/* Save location of last segmentation header so that it can be updated
 	 * as data is written.
@@ -1709,7 +1829,7 @@ static isoal_status_t isoal_update_seg_header_cmplt_length(struct isoal_source *
 	/* Update the complete flag and length */
 	seg_hdr.cmplt = cmplt;
 	pp->seg_hdr_length += add_length;
-	seg_hdr.length = pp->seg_hdr_length;
+	seg_hdr.len = pp->seg_hdr_length;
 
 
 	/* Re-write the segmentation header at the same location */
@@ -1761,6 +1881,8 @@ static isoal_status_t isoal_tx_framed_produce(struct isoal_source *source,
 		/* Initialize to info provided in SDU */
 		uint32_t actual_grp_ref_point = tx_sdu->grp_ref_point;
 		uint64_t actual_event = tx_sdu->target_event;
+		bool time_diff_valid = false;
+		uint32_t time_diff = 0;
 
 		/* Update sequence number for received SDU
 		 *
@@ -1800,9 +1922,9 @@ static isoal_status_t isoal_tx_framed_produce(struct isoal_source *source,
 		 * this seems to be the best candidate.
 		 */
 		if (actual_event > tx_sdu->target_event) {
-			actual_grp_ref_point = tx_sdu->grp_ref_point +
+			actual_grp_ref_point = isoal_get_wrapped_time_us(tx_sdu->grp_ref_point,
 				((actual_event - tx_sdu->target_event) * session->iso_interval *
-					ISO_INT_UNIT_US);
+					ISO_INT_UNIT_US));
 		}
 
 		/* Check if time stamp on packet is later than the group
@@ -1814,18 +1936,27 @@ static isoal_status_t isoal_tx_framed_produce(struct isoal_source *source,
 		 * 3.1 Time_Offset in framed PDUs :
 		 * The Time_Offset shall be a positive value.
 		 */
-		if (actual_grp_ref_point <= tx_sdu->time_stamp) {
+		if (!isoal_get_time_diff(tx_sdu->time_stamp, actual_grp_ref_point, &time_diff) ||
+			time_diff == 0) {
 			/* Advance target to next event */
 			actual_event++;
-			actual_grp_ref_point += session->iso_interval * ISO_INT_UNIT_US;
+			actual_grp_ref_point = isoal_get_wrapped_time_us(actual_grp_ref_point,
+							session->iso_interval * ISO_INT_UNIT_US);
 
 			/* Set payload number */
 			pp->payload_number = actual_event * session->burst_number;
 		}
 
 		/* Calculate the time offset */
-		LL_ASSERT(actual_grp_ref_point > tx_sdu->time_stamp);
-		time_offset = actual_grp_ref_point - tx_sdu->time_stamp;
+		time_diff_valid = isoal_get_time_diff(tx_sdu->time_stamp,
+					actual_grp_ref_point, &time_diff);
+		LL_ASSERT(time_diff_valid);
+		LL_ASSERT(time_diff > 0);
+		/* Time difference must be less than the maximum possible
+		 * time-offset of 24-bits.
+		 */
+		LL_ASSERT(time_diff <= 0x00FFFFFF);
+		time_offset = time_diff;
 
 		/* Store timing info for TX Sync command */
 		session->tx_time_stamp = actual_grp_ref_point;

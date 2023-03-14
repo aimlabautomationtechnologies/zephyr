@@ -18,7 +18,7 @@
 
 LOG_MODULE_REGISTER(thread_analyzer, CONFIG_THREAD_ANALYZER_LOG_LEVEL);
 
-#if IS_ENABLED(CONFIG_THREAD_ANALYZER_USE_PRINTK)
+#if defined(CONFIG_THREAD_ANALYZER_USE_PRINTK)
 #define THREAD_ANALYZER_PRINT(...) printk(__VA_ARGS__)
 #define THREAD_ANALYZER_FMT(str)   str "\n"
 #define THREAD_ANALYZER_VSTR(str)  (str)
@@ -131,7 +131,9 @@ K_KERNEL_STACK_ARRAY_DECLARE(z_interrupt_stacks, CONFIG_MP_MAX_NUM_CPUS,
 
 static void isr_stacks(void)
 {
-	for (int i = 0; i < CONFIG_MP_NUM_CPUS; i++) {
+	unsigned int num_cpus = arch_num_cpus();
+
+	for (int i = 0; i < num_cpus; i++) {
 		const uint8_t *buf = Z_KERNEL_STACK_BUFFER(z_interrupt_stacks[i]);
 		size_t size = K_KERNEL_STACK_SIZEOF(z_interrupt_stacks[i]);
 		size_t unused;
@@ -167,7 +169,7 @@ void thread_analyzer_print(void)
 	thread_analyzer_run(thread_print_cb);
 }
 
-#if IS_ENABLED(CONFIG_THREAD_ANALYZER_AUTO)
+#if defined(CONFIG_THREAD_ANALYZER_AUTO)
 
 void thread_analyzer_auto(void)
 {

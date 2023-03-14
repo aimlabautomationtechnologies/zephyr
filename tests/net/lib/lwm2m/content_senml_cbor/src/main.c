@@ -65,7 +65,7 @@ static double test_float;
 static bool test_bool;
 static struct lwm2m_objlnk test_objlnk;
 static uint8_t test_opaque[TEST_OPAQUE_MAX_SIZE];
-static int64_t test_time;
+static time_t test_time;
 
 static struct lwm2m_engine_obj_inst *test_obj_create(uint16_t obj_inst_id)
 {
@@ -791,10 +791,12 @@ ZTEST(net_content_senml_cbor, test_put_objlnk)
 				(0x00 << 5) | 0,
 				(0x03 << 5) | 1,
 				'7',
-				(0x00 << 5) | 2,
-				(0x00 << 5) | 0
+				(0x03 << 5) | 3,
+				'v', 'l', 'o',
+				(0x03 << 5) | 3,
+				'0', ':', '0',
 			},
-			.len = 18
+			.len = 24
 		},
 		{
 			.data = {
@@ -806,11 +808,12 @@ ZTEST(net_content_senml_cbor, test_put_objlnk)
 				(0x00 << 5) | 0,
 				(0x03 << 5) | 1,
 				'7',
-				(0x00 << 5) | 2,
-				(0x00 << 5) | 26,
-				0, 1, 0, 2
+				(0x03 << 5) | 3,
+				'v', 'l', 'o',
+				(0x03 << 5) | 3,
+				'1', ':', '2',
 			},
-			.len = 22
+			.len = 24
 		},
 		{
 			.data = {
@@ -822,10 +825,12 @@ ZTEST(net_content_senml_cbor, test_put_objlnk)
 				(0x00 << 5) | 0,
 				(0x03 << 5) | 1,
 				'7',
-				(0x00 << 5) | 2,
-				(0x01 << 5) | 0,
+				(0x03 << 5) | 3,
+				'v', 'l', 'o',
+				(0x03 << 5) | 11,
+				'6', '5', '5', '3', '5', ':', '6', '5', '5', '3', '5',
 			},
-			.len = 18
+			.len = 32
 		},
 	};
 
@@ -907,7 +912,7 @@ ZTEST(net_content_senml_cbor_nomem, test_put_opaque_nomem)
 ZTEST(net_content_senml_cbor, test_put_time)
 {
 	int ret;
-	int64_t value = 1170111600;
+	time_t value = 1170111600;
 	struct test_payload_buffer expected_payload = {
 		.data = {
 			(0x04 << 5) | 1,
@@ -1480,7 +1485,7 @@ ZTEST(net_content_senml_cbor_nodata, test_get_opaque_nodata)
 ZTEST(net_content_senml_cbor, test_get_time)
 {
 	int ret;
-	int64_t expected_value = 1170111600;
+	time_t expected_value = 1170111600;
 	struct test_payload_buffer payload = {
 		.data = {
 			(0x04 << 5) | 1,

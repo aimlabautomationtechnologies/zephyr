@@ -19,6 +19,8 @@ import select
 import re
 import psutil
 from twisterlib.environment import ZEPHYR_BASE
+sys.path.insert(0, os.path.join(ZEPHYR_BASE, "scripts/pylib/build_helpers"))
+from domains import Domains
 
 try:
     import serial
@@ -36,6 +38,7 @@ except ImportError as capture_error:
 logger = logging.getLogger('twister')
 logger.setLevel(logging.DEBUG)
 
+SUPPORTED_SIMS = ["mdb-nsim", "nsim", "renode", "qemu", "tsim", "armfvp", "xt-sim", "native"]
 
 class HarnessImporter:
 
@@ -74,6 +77,7 @@ class Handler:
         self.generator = None
         self.generator_cmd = None
         self.suite_name_check = True
+        self.ready = False
 
         self.args = []
         self.terminated = False
@@ -162,6 +166,8 @@ class BinaryHandler(Handler):
 
         self.call_west_flash = False
         self.seed = None
+        self.extra_test_args = None
+        self.line = b""
 
     def try_kill_process_by_pid(self):
         if self.pid_fn:
@@ -181,40 +187,39 @@ class BinaryHandler(Handler):
             harness.handle(None)
             return
 
-        log_out_fp = open(self.log, "wt")
-        timeout_extended = False
-        timeout_time = time.time() + self.timeout
-        while True:
-            this_timeout = timeout_time - time.time()
-            if this_timeout < 0:
-                break
-            reader_t = threading.Thread(target=self._output_reader, args=(proc,), daemon=True)
-            reader_t.start()
-            reader_t.join(this_timeout)
-            if not reader_t.is_alive():
-                line_decoded = self.line.decode('utf-8', "replace")
-                logger.debug("OUTPUT: {0}".format(line_decoded.rstrip()))
-                log_out_fp.write(line_decoded)
-                log_out_fp.flush()
-                harness.handle(line_decoded.rstrip())
-                if harness.state:
-                    if not timeout_extended or harness.capture_coverage:
-                        timeout_extended = True
-                        if harness.capture_coverage:
-                            timeout_time = time.time() + 30
-                        else:
-                            timeout_time = time.time() + 2
-            else:
-                reader_t.join(0)
-                break
-        try:
-            # POSIX arch based ztests end on their own,
-            # so let's give it up to 100ms to do so
-            proc.wait(0.1)
-        except subprocess.TimeoutExpired:
-            self.terminate(proc)
-
-        log_out_fp.close()
+        with open(self.log, "wt") as log_out_fp:
+            timeout_extended = False
+            timeout_time = time.time() + self.timeout
+            while True:
+                this_timeout = timeout_time - time.time()
+                if this_timeout < 0:
+                    break
+                reader_t = threading.Thread(target=self._output_reader, args=(proc,), daemon=True)
+                reader_t.start()
+                reader_t.join(this_timeout)
+                if not reader_t.is_alive() and self.line != b"":
+                    line_decoded = self.line.decode('utf-8', "replace")
+                    stripped_line = line_decoded.rstrip()
+                    logger.debug("OUTPUT: %s", stripped_line)
+                    log_out_fp.write(line_decoded)
+                    log_out_fp.flush()
+                    harness.handle(stripped_line)
+                    if harness.state:
+                        if not timeout_extended or harness.capture_coverage:
+                            timeout_extended = True
+                            if harness.capture_coverage:
+                                timeout_time = time.time() + 30
+                            else:
+                                timeout_time = time.time() + 2
+                else:
+                    reader_t.join(0)
+                    break
+            try:
+                # POSIX arch based ztests end on their own,
+                # so let's give it up to 100ms to do so
+                proc.wait(0.1)
+            except subprocess.TimeoutExpired:
+                self.terminate(proc)
 
     def handle(self):
 
@@ -242,7 +247,9 @@ class BinaryHandler(Handler):
 
         # Only valid for native_posix
         if self.seed is not None:
-            command = command + ["--seed="+str(self.seed)]
+            command.append(f"--seed={self.seed}")
+        if self.extra_test_args is not None:
+            command.extend(self.extra_test_args)
 
         logger.debug("Spawning process: " +
                      " ".join(shlex.quote(word) for word in command) + os.linesep +
@@ -309,6 +316,21 @@ class BinaryHandler(Handler):
         self._final_handle_actions(harness, handler_time)
 
 
+class SimulationHandler(BinaryHandler):
+    def __init__(self, instance, type_str):
+        """Constructor
+
+        @param instance Test Instance
+        """
+        super().__init__(instance, type_str)
+
+        if type_str == 'renode':
+            self.pid_fn = os.path.join(instance.build_dir, "renode.pid")
+        elif type_str == 'native':
+            self.call_make_run = False
+            self.binary = os.path.join(instance.build_dir, "zephyr", "zephyr.exe")
+            self.ready = True
+
 class DeviceHandler(Handler):
 
     def __init__(self, instance, type_str):
@@ -331,7 +353,8 @@ class DeviceHandler(Handler):
             # from the test.
             harness.capture_coverage = True
 
-        ser.flush()
+        # Clear serial leftover.
+        ser.reset_input_buffer()
 
         while ser.isOpen():
             if halt_event.is_set():
@@ -339,9 +362,16 @@ class DeviceHandler(Handler):
                 ser.close()
                 break
 
-            if not ser.in_waiting:
-                # no incoming bytes are waiting to be read from the serial
-                # input buffer, let other threads run
+            try:
+                if not ser.in_waiting:
+                    # no incoming bytes are waiting to be read from
+                    # the serial input buffer, let other threads run
+                    time.sleep(0.001)
+                    continue
+            # maybe the serial port is still in reset
+            # check status may cause error
+            # wait for more time
+            except OSError:
                 time.sleep(0.001)
                 continue
 
@@ -416,7 +446,6 @@ class DeviceHandler(Handler):
 
         hardware = self.device_is_available(self.instance)
         while not hardware:
-            logger.debug("Waiting for device {} to become available".format(self.instance.platform.name))
             time.sleep(1)
             hardware = self.device_is_available(self.instance)
 
@@ -459,10 +488,7 @@ class DeviceHandler(Handler):
                 board_id = hardware.probe_id or hardware.id
                 product = hardware.product
                 if board_id is not None:
-                    if runner == "pyocd":
-                        command_extra_args.append("--board-id")
-                        command_extra_args.append(board_id)
-                    elif runner == "nrfjprog":
+                    if runner in ("pyocd", "nrfjprog"):
                         command_extra_args.append("--dev-id")
                         command_extra_args.append(board_id)
                     elif runner == "openocd" and product == "STM32 STLink":
@@ -522,21 +548,6 @@ class DeviceHandler(Handler):
             else:
                 self.make_device_available(serial_device)
             return
-
-        ser.flush()
-
-        # turns out the ser.flush() is not enough to clear serial leftover from last case
-        # explicitly readline() can do it reliably
-        old_timeout = ser.timeout
-        # wait for 1s if no serial output
-        ser.timeout = 1
-        # or read 1000 lines at most
-        # if the leftovers are more than 1000 lines, user should realize that once
-        # saw the caught ones and fix it.
-        leftover_lines = ser.readlines(1000)
-        for line in leftover_lines:
-            logger.debug(f"leftover log of previous test: {line}")
-        ser.timeout = old_timeout
 
         harness_name = self.instance.testsuite.harness.capitalize()
         harness_import = HarnessImporter(harness_name)
@@ -620,7 +631,7 @@ class DeviceHandler(Handler):
                 self.instance.reason = "Failed"
         elif not flash_error:
             self.instance.status = "error"
-            self.instance.reason = "No Console Output(Timeout)"
+            self.instance.reason = "Timeout"
 
         if self.instance.status == "error":
             self.instance.add_missing_case_status("blocked", self.instance.reason)
@@ -656,7 +667,7 @@ class QEMUHandler(Handler):
 
         self.pid_fn = os.path.join(instance.build_dir, "qemu.pid")
 
-        if "ignore_qemu_crash" in instance.testsuite.tags:
+        if instance.testsuite.ignore_qemu_crash:
             self.ignore_qemu_crash = True
             self.ignore_unexpected_eof = True
         else:
@@ -823,8 +834,21 @@ class QEMUHandler(Handler):
         # We pass this to QEMU which looks for fifos with .in and .out
         # suffixes.
 
+        if self.instance.testsuite.sysbuild:
+            # Load domain yaml to get default domain build directory
+            # Note: for targets using QEMU, we assume that the target will
+            # have added any additional images to the run target manually
+            domain_path = os.path.join(self.build_dir, "domains.yaml")
+            domains = Domains.from_file(domain_path)
+            logger.debug("Loaded sysbuild domain data from %s" % (domain_path))
+            build_dir = domains.get_default_domain().build_dir
+        else:
+            build_dir = self.build_dir
+
+        # QEMU fifo will use main build dir
         self.fifo_fn = os.path.join(self.instance.build_dir, "qemu-fifo")
-        self.pid_fn = os.path.join(self.instance.build_dir, "qemu.pid")
+        # PID file will be created in the main sysbuild app's build dir
+        self.pid_fn = os.path.join(build_dir, "qemu.pid")
 
         if os.path.exists(self.pid_fn):
             os.unlink(self.pid_fn)
@@ -849,7 +873,7 @@ class QEMUHandler(Handler):
 
         logger.debug("Running %s (%s)" % (self.name, self.type_str))
         command = [self.generator_cmd]
-        command += ["-C", self.build_dir, "run"]
+        command += ["-C", build_dir, "run"]
 
         is_timeout = False
         qemu_pid = None

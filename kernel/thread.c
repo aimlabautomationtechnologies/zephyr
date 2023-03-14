@@ -578,6 +578,9 @@ char *z_setup_new_thread(struct k_thread *new_thread,
 	/* Initialize custom data field (value is opaque to kernel) */
 	new_thread->custom_data = NULL;
 #endif
+#ifdef CONFIG_EVENTS
+	new_thread->no_wake_on_timeout = false;
+#endif
 #ifdef CONFIG_THREAD_MONITOR
 	new_thread->entry.pEntry = entry;
 	new_thread->entry.parameter1 = p1;
@@ -1100,7 +1103,9 @@ int k_thread_runtime_stats_all_get(k_thread_runtime_stats_t *stats)
 #ifdef CONFIG_SCHED_THREAD_USAGE_ALL
 	/* Retrieve the usage stats for each core and amalgamate them. */
 
-	for (uint8_t i = 0; i < CONFIG_MP_NUM_CPUS; i++) {
+	unsigned int num_cpus = arch_num_cpus();
+
+	for (uint8_t i = 0; i < num_cpus; i++) {
 		z_sched_cpu_usage(i, &tmp_stats);
 
 		stats->execution_cycles += tmp_stats.execution_cycles;

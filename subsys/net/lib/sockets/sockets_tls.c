@@ -6,7 +6,11 @@
  */
 
 #include <stdbool.h>
+#ifdef CONFIG_ARCH_POSIX
 #include <fcntl.h>
+#else
+#include <zephyr/posix/fcntl.h>
+#endif
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(net_sock_tls, CONFIG_NET_SOCKETS_LOG_LEVEL);
@@ -52,7 +56,7 @@ LOG_MODULE_REGISTER(net_sock_tls, CONFIG_NET_SOCKETS_LOG_LEVEL);
 #include "sockets_internal.h"
 #include "tls_internal.h"
 
-#if defined(CONFIG_MBEDTLS_BUILTIN)
+#if defined(CONFIG_MBEDTLS_DEBUG)
 #include <zephyr_mbedtls_priv.h>
 #endif
 
@@ -1730,7 +1734,7 @@ static int ztls_socket(int family, int type, int proto)
 	ret = protocol_check(family, type, &proto);
 	if (ret < 0) {
 		errno = -ret;
-		return -1;
+		goto free_fd;
 	}
 
 	ctx = tls_alloc();

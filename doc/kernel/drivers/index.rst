@@ -312,7 +312,7 @@ Then when the particular instance is declared:
 
   DEVICE_DECLARE(my_driver_0);
 
-  static void my_driver_config_irq_0(void)
+  static void my_driver_config_irq_0(const struct device *dev)
   {
         IRQ_CONNECT(MY_DRIVER_0_IRQ, MY_DRIVER_0_PRI, my_driver_isr,
                     DEVICE_GET(my_driver_0), MY_DRIVER_0_FLAGS);
@@ -606,7 +606,7 @@ may be used directly:
    void some_init_code(...)
    {
       ...
-      struct pcie_mbar mbar;
+      struct pcie_bar mbar;
       bool bar_found = pcie_get_mbar(bdf, index, &mbar);
 
       device_map(DEVICE_MMIO_RAM_PTR(dev), mbar.phys_addr, mbar.size, K_MEM_CACHE_NONE);

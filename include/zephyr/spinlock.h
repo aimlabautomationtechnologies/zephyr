@@ -57,7 +57,7 @@ struct k_spinlock {
 #endif /* CONFIG_SPIN_LOCK_TIME_LIMIT */
 #endif /* CONFIG_SPIN_VALIDATE */
 
-#if defined(CONFIG_CPLUSPLUS) && !defined(CONFIG_SMP) && \
+#if defined(CONFIG_CPP) && !defined(CONFIG_SMP) && \
 	!defined(CONFIG_SPIN_VALIDATE)
 	/* If CONFIG_SMP and CONFIG_SPIN_VALIDATE are both not defined
 	 * the k_spinlock struct will have no members. The result
@@ -84,7 +84,7 @@ struct k_spinlock {
 bool z_spin_lock_valid(struct k_spinlock *l);
 bool z_spin_unlock_valid(struct k_spinlock *l);
 void z_spin_lock_set_owner(struct k_spinlock *l);
-BUILD_ASSERT(CONFIG_MP_NUM_CPUS <= 4, "Too many CPUs for mask");
+BUILD_ASSERT(CONFIG_MP_MAX_NUM_CPUS <= 4, "Too many CPUs for mask");
 
 # ifdef CONFIG_KERNEL_COHERENCE
 bool z_spin_lock_mem_coherent(struct k_spinlock *l);
